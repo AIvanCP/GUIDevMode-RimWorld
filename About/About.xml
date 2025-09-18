@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+    <name>GUI Developer Mode</name>
+    <author>AIvanCP</author>
+    <supportedVersions>
+        <li>1.4</li>
+        <li>1.5</li>
+        <li>1.6</li>
+    </supportedVersions>
+    <packageId>AIvanCP.guidevmode</packageId>
+    <description>A comprehensive GUI Developer Mode replacement for RimWorld that mimics vanilla debug tools behavior with a user-friendly interface.
+
+Features:
+- **Item Spawning Tab**: Browse all spawnable items with icons and proper in-game names. Performance-optimized with item display limits (configurable 500-5000 items) to prevent lag with large mod lists. Click items to see detailed popup with description, mod source, and stack controls. Uses vanilla debug targeting behavior.
+- **Terrain Tab**: Select terrain types and click on map to place. Behaves exactly like vanilla debug mode.
+- **Actions Tab**: Comprehensive scrollable interface with explosion tools, time controls, weather manipulation, and targeting actions. No more GUI resizing needed - everything scrolls smoothly.
+- **Explosion System**: Auto-detects 488+ explosion types from all mods including gas, acid, tear gas, extinguish foam, steam, and more. Visual radius preview with customizable parameters.
+- **Time Skip System**: Tick-based simulation that properly updates all game systems or optional quick mode for instant results.
+- **Performance Optimizations**: Smart caching system, configurable item limits, and efficient rendering for smooth operation even with hundreds of mods.
+- **Vanilla Debug Integration**: Reuses RimWorld's built-in debug functions for authentic behavior
+- **Smart GUI Behavior**: Window closes automatically after selecting items/terrain (like vanilla debug mode)
+- **Right-Click Cancel**: Cancel targeting mode by right-clicking (like vanilla debug mode)
+- **Universal Compatibility**: Works with all modded items, terrains, and content automatically
+
+Perfect replacement for developer mode debug tools with enhanced usability and performance!</description>
+    <modDependencies>
+        <li>
+            <packageId>brrainz.harmony</packageId>
+            <displayName>Harmony</displayName>
+            <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+            <downloadUrl>https://github.com/pardeike/HarmonyRimWorld/releases/latest</downloadUrl>
+        </li>
+    </modDependencies>
+    <loadAfter>
+        <li>brrainz.harmony</li>
+        <li>Ludeon.RimWorld</li>
+        <li>Ludeon.RimWorld.Royalty</li>
+        <li>Ludeon.RimWorld.Ideology</li>
+        <li>Ludeon.RimWorld.Biotech</li>
+        <li>Ludeon.RimWorld.Anomaly</li>
+    </loadAfter>
+</ModMetaData>

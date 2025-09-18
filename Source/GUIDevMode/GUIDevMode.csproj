@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>GUIDevMode</AssemblyName>
+    <RootNamespace>GUIDevMode</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DebugType>none</DebugType>
+    <OutputPath>../Assemblies/</OutputPath>
+  </PropertyGroup>
+
+  <!-- Auto-detect RimWorld installation paths -->
+  <PropertyGroup>
+    <RimWorldPath Condition="Exists('C:\Program Files (x86)\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll')">C:\Program Files (x86)\Steam\steamapps\common\RimWorld</RimWorldPath>
+    <RimWorldPath Condition="$(RimWorldPath) == '' AND Exists('C:\Program Files\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll')">C:\Program Files\Steam\steamapps\common\RimWorld</RimWorldPath>
+    <RimWorldPath Condition="$(RimWorldPath) == '' AND Exists('C:\Program Files\Epic Games\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll')">C:\Program Files\Epic Games\RimWorld</RimWorldPath>
+    <RimWorldPath Condition="$(RimWorldPath) == '' AND Exists('C:\GOG Games\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll')">C:\GOG Games\RimWorld</RimWorldPath>
+    <RimWorldPath Condition="$(RimWorldPath) == '' AND Exists('D:\Game\Rimworld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll')">D:\Game\Rimworld</RimWorldPath>
+    <RimWorldPath Condition="$(RimWorldPath) == ''">$(RIMWORLD_PATH)</RimWorldPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Essential .NET Framework References -->
+    <Reference Include="mscorlib">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Core">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Xml">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Xml.Linq">
+      <Private>False</Private>
+    </Reference>
+    
+    <!-- RimWorld Core References with auto-detection -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(RimWorldPath)\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(RimWorldPath)\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(RimWorldPath)\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(RimWorldPath)\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <!-- Harmony via NuGet package instead of direct reference -->
+    <PackageReference Include="Lib.Harmony" Version="2.2.2" />
+  </ItemGroup>
+
+</Project>

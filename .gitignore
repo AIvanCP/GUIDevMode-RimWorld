@@ -1,0 +1,83 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.mdb
+*.exe
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+
+# RimWorld
+*.rimworld
+/Assemblies/
+/Textures/
+/Sounds/
+/Defs/
+/Languages/
+
+# Keep only essential folders
+!/Source/
+!/About/
+!/README.md
+!/LICENSE
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# IDE files
+*.swp
+*.swo
+*~
+
+# Package files
+*.zip
+*.rar
+*.7z
+
+# Windows
+desktop.ini
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# JetBrains
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# MonoDevelop
+*.pidb
+*.booproj
+
+# Unity (if using Unity for icons/assets)
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/Assets/AssetStoreTools*
+
+# Old backup files
+*_Old.cs
+*_Backup.cs
