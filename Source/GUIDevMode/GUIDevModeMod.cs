@@ -1,16 +1,35 @@
 using System;
 using UnityEngine;
 using Verse;
+using System.Reflection;
+using HarmonyLib;
 
 namespace GUIDevMode
 {
     public class GUIDevModeMod : Mod
     {
         public static GUIDevModeSettings Settings { get; private set; }
+        public static Harmony harmony;
 
         public GUIDevModeMod(ModContentPack content) : base(content)
         {
             Settings = GetSettings<GUIDevModeSettings>();
+            
+            // Initialize Harmony
+            harmony = new Harmony("AIvanCP.guidevmode");
+            
+            Log.Message("[GUI Developer Mode] Mod loading...");
+            
+            try
+            {
+                // Apply Harmony patches
+                harmony.PatchAll(Assembly.GetExecutingAssembly());
+                Log.Message("[GUI Developer Mode] Harmony patches applied successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[GUI Developer Mode] Failed to apply Harmony patches: {ex}");
+            }
         }
 
         public override void DoSettingsWindowContents(Rect inRect)
@@ -73,10 +92,62 @@ namespace GUIDevMode
             try
             {
                 Log.Message("[GUI Developer Mode] Mod initialized successfully");
+                
+                // Register the key binding action
+                LongEventHandler.QueueLongEvent(() =>
+                {
+                    Log.Message("[GUI Developer Mode] Setting up key bindings...");
+                }, "GUIDevMode_Setup", false, null);
             }
             catch (Exception ex)
             {
                 Log.Error($"[GUI Developer Mode] Failed to initialize mod: {ex}");
+            }
+        }
+    }
+    
+    // Harmony patch to ensure our GameComponent gets added
+    [HarmonyPatch(typeof(Game), "AddComponent")]
+    public static class Game_AddComponent_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Game __instance)
+        {
+            if (__instance.components.Find(x => x is GUIDevModeButton) == null)
+            {
+                __instance.components.Add(new GUIDevModeButton(__instance));
+                Log.Message("[GUI Developer Mode] GameComponent added successfully");
+            }
+        }
+    }
+    
+    // Alternative patch to add the component when the game starts
+    [HarmonyPatch(typeof(Game), "InitNewGame")]
+    public static class Game_InitNewGame_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Game __instance)
+        {
+            if (__instance.components.Find(x => x is GUIDevModeButton) == null)
+            {
+                __instance.components.Add(new GUIDevModeButton(__instance));
+                Log.Message("[GUI Developer Mode] GameComponent added to new game");
+            }
+        }
+    }
+    
+    // Patch for loading existing games
+    [HarmonyPatch(typeof(Game), "LoadGame")]
+    public static class Game_LoadGame_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            var game = Current.Game;
+            if (game != null && game.components.Find(x => x is GUIDevModeButton) == null)
+            {
+                game.components.Add(new GUIDevModeButton(game));
+                Log.Message("[GUI Developer Mode] GameComponent added to loaded game");
             }
         }
     }

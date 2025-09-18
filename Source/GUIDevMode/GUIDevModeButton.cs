@@ -1,6 +1,7 @@
 using UnityEngine;
 using Verse;
 using RimWorld;
+using HarmonyLib;
 
 namespace GUIDevMode
 {
@@ -14,6 +15,7 @@ namespace GUIDevMode
         public GUIDevModeButton(Game game)
         {
             buttonRect = new Rect(Screen.width - 160f, 10f, 150f, 35f);
+            Log.Message("[GUI Developer Mode] GameComponent constructor called");
         }
 
         public override void GameComponentOnGUI()
@@ -24,11 +26,18 @@ namespace GUIDevMode
             // Handle F9 key press
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.F9)
             {
+                Log.Message("[GUI Developer Mode] F9 key pressed in GameComponent");
                 ToggleWindow();
                 Event.current.Use();
             }
 
             var settings = GUIDevModeMod.Settings;
+            if (settings == null)
+            {
+                Log.Warning("[GUI Developer Mode] Settings is null");
+                return;
+            }
+            
             if (settings.useBottomBarPlacement)
             {
                 DrawBottomBarButton();
@@ -114,16 +123,27 @@ namespace GUIDevMode
 
         public static void ToggleWindow()
         {
-            if (Find.WindowStack.IsOpen<GUIDevModeWindow>())
+            Log.Message("[GUI Developer Mode] ToggleWindow called");
+            
+            try
             {
-                Find.WindowStack.TryRemove(typeof(GUIDevModeWindow));
-                windowOpen = false;
+                if (Find.WindowStack.IsOpen<GUIDevModeWindow>())
+                {
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow));
+                    windowOpen = false;
+                    Log.Message("[GUI Developer Mode] Window closed");
+                }
+                else
+                {
+                    var window = new GUIDevModeWindow();
+                    Find.WindowStack.Add(window);
+                    windowOpen = true;
+                    Log.Message("[GUI Developer Mode] Window opened");
+                }
             }
-            else
+            catch (System.Exception ex)
             {
-                var window = new GUIDevModeWindow();
-                Find.WindowStack.Add(window);
-                windowOpen = true;
+                Log.Error($"[GUI Developer Mode] Error toggling window: {ex}");
             }
         }
 
@@ -135,6 +155,26 @@ namespace GUIDevMode
         public static bool IsWindowOpen()
         {
             return windowOpen;
+        }
+    }
+    
+    // Global key handler patch as backup
+    [HarmonyPatch(typeof(UIRoot_Play), "UIRootOnGUI")]
+    public static class UIRoot_Play_OnGUI_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            if (Current.ProgramState != ProgramState.Playing)
+                return;
+                
+            // Global F9 key handler as backup
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.F9)
+            {
+                Log.Message("[GUI Developer Mode] F9 key pressed in global handler");
+                GUIDevModeButton.ToggleWindow();
+                Event.current.Use();
+            }
         }
     }
 }
