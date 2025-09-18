@@ -6,6 +6,6 @@
     <incompatibleWith />
     <loadBefore />
     <loadAfter />
-    <manifestUri>https://raw.githubusercontent.com/username/GUIDevMode/master/About/Manifest.xml</manifestUri>
-    <downloadUri>https://github.com/username/GUIDevMode/releases</downloadUri>
+    <manifestUri>https://raw.githubusercontent.com/AIvanCP/GUIDevMode-RimWorld/main/About/Manifest.xml</manifestUri>
+    <downloadUri>https://github.com/AIvanCP/GUIDevMode-RimWorld/releases</downloadUri>
 </Manifest>

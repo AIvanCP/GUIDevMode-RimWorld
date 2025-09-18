@@ -58,7 +58,7 @@ namespace GUIDevMode
             if (Widgets.ButtonText(buttonRect, "0.5x"))
             {
                 Find.TickManager.CurTimeSpeed = TimeSpeed.Ultrafast;
-                Find.TickManager.slower.SetDesiredTimeSpeed(TimeSpeed.Normal);
+                Find.TickManager.slower.SignalForceNormalSpeed();
                 timeSpeedMultiplier = 1; // Normal is baseline
             }
             
@@ -96,15 +96,20 @@ namespace GUIDevMode
             
             // Advanced time controls
             var advancedRect = listing.GetRect(30f);
-            if (Widgets.ButtonText(advancedRect.LeftThird(), "Skip 1 Hour"))
+            var thirdWidth = advancedRect.width / 3f;
+            var leftThird = new Rect(advancedRect.x, advancedRect.y, thirdWidth - 2f, advancedRect.height);
+            var middleThird = new Rect(advancedRect.x + thirdWidth + 2f, advancedRect.y, thirdWidth - 2f, advancedRect.height);
+            var rightThird = new Rect(advancedRect.x + thirdWidth * 2f + 2f, advancedRect.y, thirdWidth - 2f, advancedRect.height);
+            
+            if (Widgets.ButtonText(leftThird, "Skip 1 Hour"))
             {
                 Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 2500);
             }
-            if (Widgets.ButtonText(advancedRect.MiddleThird(), "Skip 1 Day"))
+            if (Widgets.ButtonText(middleThird, "Skip 1 Day"))
             {
                 Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 60000);
             }
-            if (Widgets.ButtonText(advancedRect.RightThird(), "Skip 1 Season"))
+            if (Widgets.ButtonText(rightThird, "Skip 1 Season"))
             {
                 Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 900000);
             }
@@ -157,17 +162,22 @@ namespace GUIDevMode
             
             // Quick explosion buttons
             var quickRect = listing.GetRect(30f);
-            if (Widgets.ButtonText(quickRect.LeftThird(), "Small (R:2)"))
+            var quickThirdWidth = quickRect.width / 3f;
+            var quickLeftThird = new Rect(quickRect.x, quickRect.y, quickThirdWidth - 2f, quickRect.height);
+            var quickMiddleThird = new Rect(quickRect.x + quickThirdWidth + 2f, quickRect.y, quickThirdWidth - 2f, quickRect.height);
+            var quickRightThird = new Rect(quickRect.x + quickThirdWidth * 2f + 2f, quickRect.y, quickThirdWidth - 2f, quickRect.height);
+            
+            if (Widgets.ButtonText(quickLeftThird, "Small (R:2)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 2f, 75f);
             }
-            if (Widgets.ButtonText(quickRect.MiddleThird(), "Medium (R:3)"))
+            if (Widgets.ButtonText(quickMiddleThird, "Medium (R:3)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 3f, 100f);
             }
-            if (Widgets.ButtonText(quickRect.RightThird(), "Large (R:5)"))
+            if (Widgets.ButtonText(quickRightThird, "Large (R:5)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 5f, 150f);

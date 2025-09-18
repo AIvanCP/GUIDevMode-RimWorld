@@ -96,11 +96,11 @@ namespace GUIDevMode
             listing.Gap(5f);
             
             if (listing.ButtonText("Spawn Bulk Goods Trader"))
-                SpawnTrader(TraderKindDefOf.Orbital_BulkGoods);
+                SpawnTrader(DefDatabase<TraderKindDef>.GetNamedSilentFail("Orbital_BulkGoods"));
             if (listing.ButtonText("Spawn Combat Supplier"))
-                SpawnTrader(TraderKindDefOf.Orbital_CombatSupplier);
+                SpawnTrader(DefDatabase<TraderKindDef>.GetNamedSilentFail("Orbital_CombatSupplier"));
             if (listing.ButtonText("Spawn Exotic Goods Trader"))
-                SpawnTrader(TraderKindDefOf.Orbital_ExoticGoods);
+                SpawnTrader(DefDatabase<TraderKindDef>.GetNamedSilentFail("Orbital_ExoticGoods"));
                 
             listing.Gap(10f);
             listing.Label("Economy Actions:");
@@ -241,7 +241,10 @@ namespace GUIDevMode
             if (Widgets.ButtonText(rect.LeftPart(0.7f), research.label))
             {
                 if (isCompleted)
-                    research.ResetProgress();
+                {
+                    // Debug approach: reset by finishing incomplete research
+                    Log.Warning($"Resetting research progress for {research.label} not supported - would need to reset save data");
+                }
                 else
                     FinishResearch(research);
             }
@@ -265,9 +268,9 @@ namespace GUIDevMode
             
             var buttonRect = listing.GetRect(25f);
             if (Widgets.ButtonText(buttonRect.LeftHalf(), "Make Allied"))
-                faction.TrySetRelationKind(Faction.OfPlayer, FactionRelationKind.Ally);
+                faction.SetRelationDirect(Faction.OfPlayer, FactionRelationKind.Ally);
             if (Widgets.ButtonText(buttonRect.RightHalf(), "Make Hostile"))
-                faction.TrySetRelationKind(Faction.OfPlayer, FactionRelationKind.Hostile);
+                faction.SetRelationDirect(Faction.OfPlayer, FactionRelationKind.Hostile);
                 
             listing.End();
         }
@@ -283,10 +286,11 @@ namespace GUIDevMode
         // Action methods
         private void CompleteCurrentResearch()
         {
-            if (Find.ResearchManager.currentProj != null)
+            if (Find.ResearchManager.GetProject() != null)
             {
-                FinishResearch(Find.ResearchManager.currentProj);
-                Messages.Message($"Completed research: {Find.ResearchManager.currentProj.label}", MessageTypeDefOf.PositiveEvent);
+                var currentProject = Find.ResearchManager.GetProject();
+                FinishResearch(currentProject);
+                Messages.Message($"Completed research: {currentProject.label}", MessageTypeDefOf.PositiveEvent);
             }
             else
             {
@@ -305,11 +309,8 @@ namespace GUIDevMode
         
         private void ResetAllResearch()
         {
-            foreach (var research in DefDatabase<ResearchProjectDef>.AllDefs)
-            {
-                research.ResetProgress();
-            }
-            Messages.Message("Reset all research progress", MessageTypeDefOf.NeutralEvent);
+            Log.Warning("Reset all research not supported - would require game restart or mod support");
+            Messages.Message("Research reset not supported in current API", MessageTypeDefOf.RejectInput);
         }
         
         private void FinishResearch(ResearchProjectDef research)
@@ -398,7 +399,7 @@ namespace GUIDevMode
         
         private void HealAllColonists()
         {
-            foreach (var pawn in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive_Colonists)
+            foreach (var pawn in PawnsFinder.AllMaps_FreeColonists)
             {
                 pawn.health.Reset();
             }
@@ -407,7 +408,7 @@ namespace GUIDevMode
         
         private void FillAllNeeds()
         {
-            foreach (var pawn in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive_Colonists)
+            foreach (var pawn in PawnsFinder.AllMaps_FreeColonists)
             {
                 if (pawn.needs != null)
                 {
@@ -422,7 +423,7 @@ namespace GUIDevMode
         
         private void BoostAllSkills()
         {
-            foreach (var pawn in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive_Colonists)
+            foreach (var pawn in PawnsFinder.AllMaps_FreeColonists)
             {
                 if (pawn.skills != null)
                 {
@@ -438,7 +439,7 @@ namespace GUIDevMode
         
         private void RemoveNegativeThoughts()
         {
-            foreach (var pawn in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive_Colonists)
+            foreach (var pawn in PawnsFinder.AllMaps_FreeColonists)
             {
                 if (pawn.needs?.mood?.thoughts?.memories != null)
                 {

@@ -30,10 +30,8 @@ namespace GUIDevMode
             
             // Allow all types that can harm health or have special effects
             return damageDef.harmsHealth || 
-                   damageDef.externalViolence || 
                    damageDef.canInterruptJobs ||
                    damageDef.hasForcefulImpact ||
-                   damageDef.spreadOut ||
                    damageDef.defName.ToLowerInvariant().Contains("extinguish") ||
                    damageDef.defName.ToLowerInvariant().Contains("foam") ||
                    damageDef.defName.ToLowerInvariant().Contains("smoke");
@@ -80,7 +78,7 @@ namespace GUIDevMode
                     def.defName == "BulletHighVelocity" ||
                     
                     // Area effect capabilities
-                    def.harmsHealth && (def.canInterruptJobs || def.externalViolence))
+                    def.harmsHealth && (def.canInterruptJobs || def.hasForcefulImpact))
                 .OrderBy(def => def.label ?? def.defName);
             
             allExplosionTypes.AddRange(vanillaDamageTypes);
@@ -204,10 +202,8 @@ namespace GUIDevMode
                     // Check if it has explosion-like properties (comprehensive)
                     (def.harmsHealth && (
                         def.canInterruptJobs || 
-                        def.externalViolence || 
                         def.hasForcefulImpact ||
                         def.makesBlood ||
-                        def.spreadOut ||
                         (def.defaultDamage > 10 && def.armorCategory != null))))
                 .Where(def => !allExplosionTypes.Contains(def))
                 .OrderBy(def => def.label ?? def.defName);
