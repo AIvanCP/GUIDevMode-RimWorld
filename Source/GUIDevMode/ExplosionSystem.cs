@@ -450,33 +450,70 @@ namespace GUIDevMode
             // Use the stored explosion preview color
             var color = explosionPreviewColor;
             
-            // Draw explosion radius ring
-            GenDraw.DrawRadiusRing(cell, currentExplosionRadius, color);
+            // Draw main explosion radius ring (like CF_ExplosiveRadius mod)
+            GenDraw.DrawRadiusRing(cell, currentExplosionRadius, Color.yellow);
             
-            // Also draw inner ring at half radius for better visualization
-            var innerColor = color;
-            innerColor.a = 0.15f;
-            GenDraw.DrawRadiusRing(cell, currentExplosionRadius * 0.5f, innerColor);
+            // Draw inner damage ring at 75% radius
+            var innerRadius = currentExplosionRadius * 0.75f;
+            if (innerRadius > 0.5f)
+            {
+                var innerColor = Color.red;
+                innerColor.a = 0.6f;
+                GenDraw.DrawRadiusRing(cell, innerRadius, innerColor);
+            }
             
-            // Draw all affected cells within radius
+            // Draw outer effect ring at 125% radius for area effects
+            var outerRadius = currentExplosionRadius * 1.25f;
+            var outerColor = color;
+            outerColor.a = 0.3f;
+            GenDraw.DrawRadiusRing(cell, outerRadius, outerColor);
+            
+            // Draw all affected cells within radius with proper highlighting
             var affectedCells = new List<IntVec3>();
+            var highDamageCells = new List<IntVec3>();
+            
             foreach (var testCell in GenRadial.RadialCellsAround(cell, currentExplosionRadius, true))
             {
-                if (testCell.InBounds(Find.CurrentMap) && testCell.DistanceTo(cell) <= currentExplosionRadius)
+                if (testCell.InBounds(Find.CurrentMap))
                 {
-                    affectedCells.Add(testCell);
+                    var distance = testCell.DistanceTo(cell);
+                    if (distance <= currentExplosionRadius)
+                    {
+                        affectedCells.Add(testCell);
+                        if (distance <= innerRadius)
+                        {
+                            highDamageCells.Add(testCell);
+                        }
+                    }
                 }
             }
             
-            // Highlight affected area with semi-transparent overlay
+            // Highlight high damage area
+            if (highDamageCells.Any())
+            {
+                var highDamageColor = Color.red;
+                highDamageColor.a = 0.25f;
+                GenDraw.DrawFieldEdges(highDamageCells, highDamageColor);
+            }
+            
+            // Highlight general affected area
             var areaColor = color;
-            areaColor.a = 0.2f;
+            areaColor.a = 0.15f;
             GenDraw.DrawFieldEdges(affectedCells, areaColor);
             
-            // Draw target cell highlight
-            var targetColor = color;
-            targetColor.a = 0.8f;
+            // Draw target cell highlight with crosshair effect
+            var targetColor = Color.white;
+            targetColor.a = 0.9f;
             GenDraw.DrawFieldEdges(new List<IntVec3> { cell }, targetColor);
+            
+            // Draw explosion type and radius info
+            var explosionInfo = $"{currentExplosionType.label ?? currentExplosionType.defName} - Radius: {currentExplosionRadius:F1}";
+            var infoRect = new Rect(UI.screenWidth - 300f, 50f, 290f, 30f);
+            Widgets.DrawBoxSolid(infoRect, new Color(0f, 0f, 0f, 0.7f));
+            GUI.color = Color.yellow;
+            Text.Font = GameFont.Small;
+            Widgets.Label(infoRect, explosionInfo);
+            GUI.color = Color.white;
         }
         
         public static void StartQuickExplosion(DamageDef damageDef, float radius, float damageAmount)
