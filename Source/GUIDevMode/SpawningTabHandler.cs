@@ -226,32 +226,77 @@ namespace GUIDevMode
         
         private void SpawnPawnWithGiftPods(PawnKindDef pawnKind)
         {
-            Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
-                if (target.IsValid)
-                {
-                    var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
-                    var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
-                    
-                    var pods = new List<Thing> { pawn };
-                    
-                    if (giftPodsWithItems)
+            // Check for drop zones first
+            var dropZones = Find.CurrentMap.zoneManager.AllZones.OfType<Zone_Stockpile>()
+                .Where(z => z.GetSlotGroup()?.Settings?.filter?.Allows(ThingDefOf.Silver) == true).ToList();
+            
+            if (dropZones.Any())
+            {
+                // Use drop zone targeting like orbital traders
+                var targetingParams = TargetingParameters.ForDropPodsDestination();
+                Find.Targeter.BeginTargeting(targetingParams, target => {
+                    if (target.IsValid)
                     {
-                        // Add some random items to the gift pods
-                        var items = new[] { ThingDefOf.Silver, ThingDefOf.Steel, ThingDefOf.ComponentIndustrial };
-                        foreach (var itemDef in items)
+                        var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
+                        var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
+                        
+                        var pods = new List<Thing> { pawn };
+                        
+                        if (giftPodsWithItems)
                         {
-                            var item = ThingMaker.MakeThing(itemDef);
-                            item.stackCount = Rand.Range(10, 50);
-                            pods.Add(item);
+                            // Add some random items to the gift pods
+                            var items = new[] { ThingDefOf.Silver, ThingDefOf.Steel, ThingDefOf.ComponentIndustrial };
+                            foreach (var itemDef in items)
+                            {
+                                var item = ThingMaker.MakeThing(itemDef);
+                                item.stackCount = Rand.Range(10, 50);
+                                pods.Add(item);
+                            }
                         }
+                        
+                        // Create visual landing indicator
+                        CreateDropPodLandingIndicator(target.Cell);
+                        
+                        DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
+                        
+                        var factionText = spawnAsFriendly ? "friendly" : "hostile";
+                        Messages.Message($"Gift pods delivered {factionText} {pawn.LabelShort} to drop zone", MessageTypeDefOf.PositiveEvent);
                     }
-                    
-                    DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
-                    
-                    var factionText = spawnAsFriendly ? "friendly" : "hostile";
-                    Messages.Message($"Gift pods delivered {factionText} {pawn.LabelShort}", MessageTypeDefOf.PositiveEvent);
-                }
-            });
+                }, null, delegate {
+                    // Draw drop zone highlighting
+                    DrawDropZoneHighlights();
+                });
+            }
+            else
+            {
+                // Fallback to cell targeting if no drop zones
+                Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
+                    if (target.IsValid)
+                    {
+                        var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
+                        var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
+                        
+                        var pods = new List<Thing> { pawn };
+                        
+                        if (giftPodsWithItems)
+                        {
+                            var items = new[] { ThingDefOf.Silver, ThingDefOf.Steel, ThingDefOf.ComponentIndustrial };
+                            foreach (var itemDef in items)
+                            {
+                                var item = ThingMaker.MakeThing(itemDef);
+                                item.stackCount = Rand.Range(10, 50);
+                                pods.Add(item);
+                            }
+                        }
+                        
+                        CreateDropPodLandingIndicator(target.Cell);
+                        DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
+                        
+                        var factionText = spawnAsFriendly ? "friendly" : "hostile";
+                        Messages.Message($"Gift pods delivered {factionText} {pawn.LabelShort} (no drop zone found)", MessageTypeDefOf.PositiveEvent);
+                    }
+                });
+            }
         }
         
         private void SpawnRandomAnimal()
@@ -270,29 +315,103 @@ namespace GUIDevMode
         
         private void SpawnGiftPods()
         {
-            Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
-                if (target.IsValid)
-                {
-                    var pods = new List<Thing>();
-                    
-                    // Add random valuable items
-                    var valuableItems = new[] 
-                    { 
-                        ThingDefOf.Silver, ThingDefOf.Gold, ThingDefOf.Steel, 
-                        ThingDefOf.ComponentIndustrial, ThingDefOf.Plasteel 
-                    };
-                    
-                    foreach (var itemDef in valuableItems.Take(3))
+            // Check for drop zones first
+            var dropZones = Find.CurrentMap.zoneManager.AllZones.OfType<Zone_Stockpile>()
+                .Where(z => z.GetSlotGroup()?.Settings?.filter?.Allows(ThingDefOf.Silver) == true).ToList();
+            
+            if (dropZones.Any())
+            {
+                // Use drop zone targeting like orbital traders
+                var targetingParams = TargetingParameters.ForDropPodsDestination();
+                Find.Targeter.BeginTargeting(targetingParams, target => {
+                    if (target.IsValid)
                     {
-                        var item = ThingMaker.MakeThing(itemDef);
-                        item.stackCount = Rand.Range(20, 100);
-                        pods.Add(item);
+                        var pods = new List<Thing>();
+                        
+                        // Add random valuable items
+                        var valuableItems = new[] 
+                        { 
+                            ThingDefOf.Silver, ThingDefOf.Gold, ThingDefOf.Steel, 
+                            ThingDefOf.ComponentIndustrial, ThingDefOf.Plasteel 
+                        };
+                        
+                        foreach (var itemDef in valuableItems.Take(3))
+                        {
+                            var item = ThingMaker.MakeThing(itemDef);
+                            item.stackCount = Rand.Range(20, 100);
+                            pods.Add(item);
+                        }
+                        
+                        CreateDropPodLandingIndicator(target.Cell);
+                        DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
+                        Messages.Message("Gift pods delivered to drop zone with valuable items", MessageTypeDefOf.PositiveEvent);
                     }
-                    
-                    DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
-                    Messages.Message("Gift pods delivered with valuable items", MessageTypeDefOf.PositiveEvent);
+                }, null, delegate {
+                    DrawDropZoneHighlights();
+                });
+            }
+            else
+            {
+                // Fallback to cell targeting if no drop zones
+                Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
+                    if (target.IsValid)
+                    {
+                        var pods = new List<Thing>();
+                        
+                        var valuableItems = new[] 
+                        { 
+                            ThingDefOf.Silver, ThingDefOf.Gold, ThingDefOf.Steel, 
+                            ThingDefOf.ComponentIndustrial, ThingDefOf.Plasteel 
+                        };
+                        
+                        foreach (var itemDef in valuableItems.Take(3))
+                        {
+                            var item = ThingMaker.MakeThing(itemDef);
+                            item.stackCount = Rand.Range(20, 100);
+                            pods.Add(item);
+                        }
+                        
+                        CreateDropPodLandingIndicator(target.Cell);
+                        DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
+                        Messages.Message("Gift pods delivered with valuable items (no drop zone found)", MessageTypeDefOf.PositiveEvent);
+                    }
+                });
+            }
+        }
+        
+        private void CreateDropPodLandingIndicator(IntVec3 cell)
+        {
+            // Create a visual indicator for where the drop pod will land
+            try
+            {
+                // Try to create a flash effect
+                FleckMaker.ThrowLightningGlow(cell.ToVector3Shifted(), Find.CurrentMap, 2f);
+            }
+            catch
+            {
+                // Fallback to dust puff if lightning glow fails
+                FleckMaker.ThrowDustPuffThick(cell.ToVector3Shifted(), Find.CurrentMap, 2f, Color.yellow);
+            }
+            
+            // Also create a landing marker that lasts longer
+            FleckMaker.ThrowDustPuffThick(cell.ToVector3Shifted(), Find.CurrentMap, 3f, Color.green);
+        }
+        
+        private void DrawDropZoneHighlights()
+        {
+            var dropZones = Find.CurrentMap.zoneManager.AllZones.OfType<Zone_Stockpile>()
+                .Where(z => z.GetSlotGroup()?.Settings?.filter?.Allows(ThingDefOf.Silver) == true);
+                
+            foreach (var zone in dropZones)
+            {
+                var cells = zone.Cells.ToList();
+                if (cells.Any())
+                {
+                    var highlightColor = Color.green;
+                    highlightColor.a = 0.3f;
+                    GenDraw.DrawFieldEdges(cells, highlightColor);
                 }
-            });
+            }
         }
     }
 }

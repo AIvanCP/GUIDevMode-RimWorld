@@ -458,9 +458,24 @@ namespace GUIDevMode
             innerColor.a = 0.15f;
             GenDraw.DrawRadiusRing(cell, currentExplosionRadius * 0.5f, innerColor);
             
+            // Draw all affected cells within radius
+            var affectedCells = new List<IntVec3>();
+            foreach (var testCell in GenRadial.RadialCellsAround(cell, currentExplosionRadius, true))
+            {
+                if (testCell.InBounds(Find.CurrentMap) && testCell.DistanceTo(cell) <= currentExplosionRadius)
+                {
+                    affectedCells.Add(testCell);
+                }
+            }
+            
+            // Highlight affected area with semi-transparent overlay
+            var areaColor = color;
+            areaColor.a = 0.2f;
+            GenDraw.DrawFieldEdges(affectedCells, areaColor);
+            
             // Draw target cell highlight
             var targetColor = color;
-            targetColor.a = 0.6f;
+            targetColor.a = 0.8f;
             GenDraw.DrawFieldEdges(new List<IntVec3> { cell }, targetColor);
         }
         

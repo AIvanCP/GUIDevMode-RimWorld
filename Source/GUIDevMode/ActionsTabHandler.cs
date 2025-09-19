@@ -124,19 +124,25 @@ namespace GUIDevMode
             Widgets.Label(searchRect.LeftPart(0.2f), "Filter:");
             explosionSearchFilter = Widgets.TextField(searchRect.RightPart(0.8f), explosionSearchFilter);
             
+            // Calculate dynamic height for explosion list based on remaining space
+            var remainingHeight = listing.CurHeight;
+            var minHeight = 150f;
+            var maxHeight = 400f;
+            var dynamicHeight = Mathf.Clamp(remainingHeight - 200f, minHeight, maxHeight); // Leave 200f for controls below
+            
             // Explosion type selection with scrolling
-            var explosionListRect = listing.GetRect(200f);
-            var viewRect = new Rect(0, 0, explosionListRect.width - 16f, ExplosionSystem.AllExplosionTypes.Count * 25f);
-            
-            Widgets.BeginScrollView(explosionListRect, ref explosionScrollPosition, viewRect);
-            
-            var y = 0f;
+            var explosionListRect = listing.GetRect(dynamicHeight);
             var filteredExplosions = string.IsNullOrEmpty(explosionSearchFilter) 
                 ? ExplosionSystem.AllExplosionTypes 
                 : ExplosionSystem.AllExplosionTypes.Where(e => 
                     (e.label?.ToLower().Contains(explosionSearchFilter.ToLower()) ?? false) ||
                     e.defName.ToLower().Contains(explosionSearchFilter.ToLower())).ToList();
             
+            var viewRect = new Rect(0, 0, explosionListRect.width - 16f, filteredExplosions.Count * 25f);
+            
+            Widgets.BeginScrollView(explosionListRect, ref explosionScrollPosition, viewRect);
+            
+            var y = 0f;
             foreach (var explosionType in filteredExplosions)
             {
                 var itemRect = new Rect(0, y, viewRect.width, 24f);

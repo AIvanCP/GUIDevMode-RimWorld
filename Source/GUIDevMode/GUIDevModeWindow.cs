@@ -40,6 +40,10 @@ namespace GUIDevMode
             forcePause = false;
             absorbInputAroundWindow = false;
             
+            // Initialize background system
+            BackgroundManager.LoadBackgroundTextures();
+            BackgroundManager.SetRandomBackground();
+            
             // Initialize tab handlers
             itemsTabHandler = new ItemsTabHandler();
             actionsTabHandler = new ActionsTabHandler();
@@ -54,6 +58,17 @@ namespace GUIDevMode
         
         public override void DoWindowContents(Rect inRect)
         {
+            // Draw background
+            BackgroundManager.DrawBackground(inRect);
+            
+            // Create semi-transparent overlay for better text readability
+            var overlayColor = BackgroundManager.GetComplementaryUIColor();
+            Widgets.DrawBoxSolid(inRect, overlayColor);
+            
+            // Store original GUI color
+            var originalColor = GUI.color;
+            GUI.color = BackgroundManager.GetComplementaryTextColor();
+            
             // Tab buttons at the top
             var tabRect = new Rect(inRect.x, inRect.y, inRect.width, 40);
             DrawCategoryTabs(tabRect);
@@ -91,11 +106,14 @@ namespace GUIDevMode
                     utilityTabsHandler.DrawTradingTab(contentRect);
                     break;
             }
+            
+            // Restore original GUI color
+            GUI.color = originalColor;
         }
         
         private void DrawCategoryTabs(Rect rect)
         {
-            var tabWidth = rect.width / 9;
+            var tabWidth = (rect.width - 100f) / 9; // Reserve 100f for background button
             var currentX = rect.x;
             
             var categories = new[] { DevToolCategory.Items, DevToolCategory.Terrain, DevToolCategory.Actions, DevToolCategory.Spawning, DevToolCategory.Factions, DevToolCategory.Incidents, DevToolCategory.Utilities, DevToolCategory.Research, DevToolCategory.Trading };
@@ -131,6 +149,15 @@ namespace GUIDevMode
                 
                 currentX += tabWidth;
             }
+            
+            // Background change button
+            var bgButtonRect = new Rect(currentX + 5f, rect.y, 95f, rect.height);
+            GUI.backgroundColor = new Color(0.7f, 0.9f, 1f); // Light blue
+            if (Widgets.ButtonText(bgButtonRect, "New BG"))
+            {
+                BackgroundManager.SetRandomBackground();
+            }
+            
             GUI.backgroundColor = Color.white;
         }
         

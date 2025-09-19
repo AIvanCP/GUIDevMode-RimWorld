@@ -127,6 +127,18 @@ namespace GUIDevMode
                     item.defName.ToLower().Contains(itemSearchFilter.ToLower())).ToList();
             }
             
+            // Apply user's display limit to prevent lag
+            var settings = GUIDevModeMod.Settings;
+            if (settings.limitItemDisplay && items.Count > settings.itemDisplayLimit)
+            {
+                items = items.Take(settings.itemDisplayLimit).ToList();
+                listing.Label($"Showing {settings.itemDisplayLimit} of {CacheManager.GetItemsByCategory(selectedItemCategory).Count} items (limited for performance)");
+            }
+            else
+            {
+                listing.Label($"Showing all {items.Count} items");
+            }
+            
             var itemsListRect = listing.GetRect(rect.height - 140f);
             var viewRect = new Rect(0, 0, itemsListRect.width - 16f, items.Count * 25f);
             
