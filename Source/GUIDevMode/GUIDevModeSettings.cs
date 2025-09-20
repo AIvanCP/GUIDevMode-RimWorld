@@ -18,7 +18,7 @@ namespace GUIDevMode
         public bool explosionRadiusPreviewPersistent = true;
         public bool useQuickSkipMode = false;
         public bool limitItemDisplay = true;
-        public int itemDisplayLimit = 2000;
+        public int itemDisplayLimit = 3000; // Default 3000 items
         
         public override void ExposeData()
         {
@@ -35,7 +35,7 @@ namespace GUIDevMode
             Scribe_Values.Look(ref explosionRadiusPreviewPersistent, "explosionRadiusPreviewPersistent", true);
             Scribe_Values.Look(ref useQuickSkipMode, "useQuickSkipMode", false);
             Scribe_Values.Look(ref limitItemDisplay, "limitItemDisplay", true);
-            Scribe_Values.Look(ref itemDisplayLimit, "itemDisplayLimit", 2000);
+            Scribe_Values.Look(ref itemDisplayLimit, "itemDisplayLimit", 3000);
             base.ExposeData();
         }
     }

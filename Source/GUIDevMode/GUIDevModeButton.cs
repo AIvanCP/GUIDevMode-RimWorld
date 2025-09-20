@@ -175,6 +175,12 @@ namespace GUIDevMode
                 GUIDevModeButton.ToggleWindow();
                 Event.current.Use();
             }
+            
+            // Draw explosion preview overlay if targeting is active
+            if (Event.current.type == EventType.Repaint && Find.CurrentMap != null)
+            {
+                ExplosionSystem.DrawExplosionRadiusPreviewStatic();
+            }
         }
     }
 }

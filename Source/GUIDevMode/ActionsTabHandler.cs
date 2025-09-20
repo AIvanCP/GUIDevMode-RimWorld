@@ -20,10 +20,22 @@ namespace GUIDevMode
         private int timeSpeedMultiplier = 1;
         private bool timeControlsExpanded = false;
         
+        // Time skip progress tracking
+        private bool timeSkipInProgress = false;
+        private int timeSkipTotalTicks = 0;
+        private int timeSkipProcessedTicks = 0;
+        private float timeSkipProgress = 0f;
+        private System.DateTime timeSkipStartTime;
+        
         public void DrawActionsTab(Rect rect)
         {
+            // Use scroll view for the entire tab content
+            var viewRect = new Rect(0, 0, rect.width - 16f, 1000f); // Give enough height for scrolling
+            
+            Widgets.BeginScrollView(rect, ref scrollPosition, viewRect);
+            
             var listing = new Listing_Standard();
-            listing.Begin(rect);
+            listing.Begin(viewRect);
             
             // Time Controls Section
             DrawTimeControlsSection(listing);
@@ -34,6 +46,8 @@ namespace GUIDevMode
             DrawExplosionSection(listing);
             
             listing.End();
+            
+            Widgets.EndScrollView();
         }
         
         private void DrawTimeControlsSection(Listing_Standard listing)
@@ -101,17 +115,47 @@ namespace GUIDevMode
             var middleThird = new Rect(advancedRect.x + thirdWidth + 2f, advancedRect.y, thirdWidth - 2f, advancedRect.height);
             var rightThird = new Rect(advancedRect.x + thirdWidth * 2f + 2f, advancedRect.y, thirdWidth - 2f, advancedRect.height);
             
+            // Disable buttons if time skip is in progress
+            GUI.enabled = !timeSkipInProgress;
+            
             if (Widgets.ButtonText(leftThird, "Skip 1 Hour"))
             {
-                Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 2500);
+                StartTimeSkip(2500); // 1 hour = 2500 ticks
             }
             if (Widgets.ButtonText(middleThird, "Skip 1 Day"))
             {
-                Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 60000);
+                StartTimeSkip(60000); // 1 day = 60000 ticks
             }
             if (Widgets.ButtonText(rightThird, "Skip 1 Season"))
             {
-                Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + 900000);
+                StartTimeSkip(900000); // 1 season = 900000 ticks
+            }
+            
+            GUI.enabled = true;
+            
+            // Show progress bar and cancel button if time skip is active
+            if (timeSkipInProgress)
+            {
+                listing.Gap(5f);
+                
+                // Progress bar
+                var progressRect = listing.GetRect(25f);
+                Widgets.FillableBar(progressRect, timeSkipProgress);
+                
+                var progressText = $"Time skip: {timeSkipProcessedTicks:N0} / {timeSkipTotalTicks:N0} ticks ({timeSkipProgress:P0})";
+                Widgets.Label(progressRect, progressText);
+                
+                // Cancel button
+                var cancelRect = listing.GetRect(30f);
+                GUI.color = Color.red;
+                if (Widgets.ButtonText(cancelRect, "Cancel Time Skip"))
+                {
+                    CancelTimeSkip();
+                }
+                GUI.color = Color.white;
+                
+                // Update progress
+                UpdateTimeSkipProgress();
             }
         }
         
@@ -176,17 +220,26 @@ namespace GUIDevMode
             if (Widgets.ButtonText(quickLeftThird, "Small (R:2)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
+                {
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 2f, 75f);
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                }
             }
             if (Widgets.ButtonText(quickMiddleThird, "Medium (R:3)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
+                {
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 3f, 100f);
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                }
             }
             if (Widgets.ButtonText(quickRightThird, "Large (R:5)"))
             {
                 if (ExplosionSystem.selectedExplosionType != null)
+                {
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, 5f, 150f);
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                }
             }
             
             // Custom explosion settings
@@ -207,6 +260,7 @@ namespace GUIDevMode
                 if (ExplosionSystem.selectedExplosionType != null)
                 {
                     ExplosionSystem.StartQuickExplosion(ExplosionSystem.selectedExplosionType, customExplosionRadius, customExplosionDamage);
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
                 }
             }
             
@@ -218,6 +272,7 @@ namespace GUIDevMode
                 {
                     var radius = ExplosionSystem.GetExplosionRadius(ExplosionSystem.selectedExplosionType);
                     ExplosionSystem.StartExplosionTargeting(ExplosionSystem.selectedExplosionType, radius);
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
                 }
             }
             
@@ -239,6 +294,97 @@ namespace GUIDevMode
                 ExplosionSystem.RefreshExplosionTypes();
                 Messages.Message($"Found {ExplosionSystem.AllExplosionTypes.Count} explosion types", MessageTypeDefOf.NeutralEvent);
             }
+        }
+        
+        private void StartTimeSkip(int ticks)
+        {
+            timeSkipInProgress = true;
+            timeSkipTotalTicks = ticks;
+            timeSkipProcessedTicks = 0;
+            timeSkipProgress = 0f;
+            timeSkipStartTime = System.DateTime.Now;
+            
+            Messages.Message($"Starting time skip: {ticks:N0} ticks", MessageTypeDefOf.NeutralEvent);
+        }
+        
+        private void UpdateTimeSkipProgress()
+        {
+            if (!timeSkipInProgress) return;
+            
+            var settings = GUIDevModeMod.Settings;
+            // Reduce batch size to prevent freezing - process fewer ticks per frame
+            var ticksToProcess = Mathf.Min(50, timeSkipTotalTicks - timeSkipProcessedTicks); // Reduced from 500 to 50
+            
+            if (ticksToProcess <= 0)
+            {
+                // Time skip completed
+                CompleteTimeSkip();
+                return;
+            }
+            
+            // Process the ticks
+            if (settings.useQuickSkipMode)
+            {
+                // Quick mode: jump forward in smaller increments
+                var jumpTicks = Mathf.Min(100, ticksToProcess); // Smaller jumps to prevent issues
+                Find.TickManager.DebugSetTicksGame(Find.TickManager.TicksGame + jumpTicks);
+                timeSkipProcessedTicks += jumpTicks;
+            }
+            else
+            {
+                // Proper simulation mode with performance optimization
+                var ticksPerFrame = Mathf.Min(10, ticksToProcess); // Process even fewer ticks per frame
+                
+                for (int i = 0; i < ticksPerFrame; i++)
+                {
+                    try
+                    {
+                        Find.TickManager.DoSingleTick();
+                        timeSkipProcessedTicks++;
+                        
+                        // Check if we've completed
+                        if (timeSkipProcessedTicks >= timeSkipTotalTicks)
+                        {
+                            break;
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"GUIDevMode: Error during time skip tick: {ex}");
+                        // Continue processing despite errors
+                    }
+                }
+            }
+            
+            timeSkipProgress = (float)timeSkipProcessedTicks / timeSkipTotalTicks;
+            
+            // Add performance monitoring
+            var elapsed = System.DateTime.Now - timeSkipStartTime;
+            if (elapsed.TotalSeconds > 30f) // Auto-cancel if taking too long
+            {
+                Messages.Message("Time skip taking too long, auto-cancelling to prevent freeze", MessageTypeDefOf.RejectInput);
+                CancelTimeSkip();
+            }
+        }
+        
+        private void CompleteTimeSkip()
+        {
+            timeSkipInProgress = false;
+            var elapsed = System.DateTime.Now - timeSkipStartTime;
+            Messages.Message($"Time skip completed! Processed {timeSkipTotalTicks:N0} ticks in {elapsed.TotalSeconds:F1} seconds", 
+                MessageTypeDefOf.PositiveEvent);
+        }
+        
+        private void CancelTimeSkip()
+        {
+            timeSkipInProgress = false;
+            Messages.Message($"Time skip cancelled. Processed {timeSkipProcessedTicks:N0} of {timeSkipTotalTicks:N0} ticks", 
+                MessageTypeDefOf.NeutralEvent);
+        }
+        
+        private void AdvanceTime(int ticks)
+        {
+            StartTimeSkip(ticks);
         }
     }
 }

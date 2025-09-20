@@ -11,6 +11,7 @@ namespace GUIDevMode
         private Vector2 scrollPosition = Vector2.zero;
         private string terrainSearchFilter = "";
         private TerrainDef selectedTerrain = null;
+        private Dictionary<string, bool> categoryExpanded = new Dictionary<string, bool>();
         
         public void DrawTerrainTab(Rect rect)
         {
@@ -88,12 +89,28 @@ namespace GUIDevMode
                 
                 if (!terrainsInCategory.Any()) continue;
                 
-                // Category header
+                // Initialize expanded state if not set
+                if (!categoryExpanded.ContainsKey(category))
+                    categoryExpanded[category] = false;
+                
+                // Category header - clickable to expand/collapse
                 var categoryRect = new Rect(0, y, viewRect.width, 25f);
-                GUI.color = Color.yellow;
-                Widgets.Label(categoryRect, $"▼ {category} ({terrainsInCategory.Count})");
+                var expandSymbol = categoryExpanded[category] ? "▼" : "►";
+                var categoryLabel = $"{expandSymbol} {category} ({terrainsInCategory.Count})";
+                
+                // Draw background for category header
+                GUI.color = new Color(0.3f, 0.3f, 0.3f, 0.7f);
+                GUI.DrawTexture(categoryRect, BaseContent.WhiteTex);
                 GUI.color = Color.white;
+                
+                if (GUI.Button(categoryRect, categoryLabel))
+                {
+                    categoryExpanded[category] = !categoryExpanded[category];
+                }
                 y += 30f;
+                
+                // Only show terrain items if category is expanded
+                if (!categoryExpanded[category]) continue;
                 
                 // Terrain items in category
                 foreach (var terrain in terrainsInCategory)
@@ -107,7 +124,7 @@ namespace GUIDevMode
                     if (Widgets.ButtonText(terrainRect, labelText, false))
                     {
                         selectedTerrain = terrain;
-                        StartContinuousTerrainPlacement(terrain);
+                        ShowTerrainConfirmation(terrain);
                     }
                     
                     y += 25f;
@@ -131,22 +148,63 @@ namespace GUIDevMode
             }
             else
             {
-                // Terrain details
+                // Terrain details with image
                 Text.Font = GameFont.Medium;
                 listing.Label(selectedTerrain.label?.CapitalizeFirst() ?? selectedTerrain.defName);
                 Text.Font = GameFont.Small;
                 
                 listing.Gap(8f);
                 
+                // Terrain image
+                var imageRect = listing.GetRect(64f);
+                var imageArea = new Rect(imageRect.x, imageRect.y, 64f, 64f);
+                
+                try
+                {
+                    var texture = selectedTerrain.uiIcon;
+                    if (texture != null)
+                    {
+                        GUI.DrawTexture(imageArea, texture);
+                    }
+                    else
+                    {
+                        // Try to get graphic texture
+                        var graphic = selectedTerrain.graphic;
+                        if (graphic?.MatSingle?.mainTexture != null)
+                        {
+                            GUI.DrawTexture(imageArea, graphic.MatSingle.mainTexture);
+                        }
+                        else
+                        {
+                            GUI.color = Color.gray;
+                            Widgets.DrawBox(imageArea);
+                            Widgets.Label(imageArea, "No\nImage");
+                            GUI.color = Color.white;
+                        }
+                    }
+                }
+                catch
+                {
+                    GUI.color = Color.gray;
+                    Widgets.DrawBox(imageArea);
+                    Widgets.Label(imageArea, "No\nImage");
+                    GUI.color = Color.white;
+                }
+                
+                listing.Gap(8f);
+                
                 if (!string.IsNullOrEmpty(selectedTerrain.description))
                 {
-                    listing.Label($"Description: {selectedTerrain.description}");
+                    var descRect = listing.GetRect(60f);
+                    Widgets.Label(descRect, $"Description: {selectedTerrain.description}");
                     listing.Gap(4f);
                 }
                 
                 listing.Label($"Mod: {selectedTerrain.modContentPack?.Name ?? "Core"}");
                 listing.Label($"Buildable: {(selectedTerrain.BuildableByPlayer ? "Yes" : "No")}");
                 listing.Label($"Natural: {(selectedTerrain.natural ? "Yes" : "No")}");
+                listing.Label($"Beauty: {selectedTerrain.GetStatValueAbstract(StatDefOf.Beauty):F1}");
+                listing.Label($"Walk Speed: {selectedTerrain.GetStatValueAbstract(StatDefOf.MoveSpeed):F2}x");
                 
                 if (selectedTerrain.costList?.Any() == true)
                 {
@@ -168,26 +226,33 @@ namespace GUIDevMode
             listing.End();
         }
         
-        private void StartContinuousTerrainPlacement(TerrainDef terrain)
+        private void ShowTerrainConfirmation(TerrainDef terrain)
         {
-            ContinuousTerrainTargeting(terrain);
+            var description = terrain.description ?? "No description available.";
+            var title = $"Place {terrain.label?.CapitalizeFirst() ?? terrain.defName}?";
+            
+            var confirmText = $"{description}\n\nClick 'Place' to select location, or 'Cancel' to return.";
+            
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(confirmText, () => {
+                StartTerrainPlacement(terrain);
+            }, destructive: false, title: title));
         }
         
-        private void ContinuousTerrainTargeting(TerrainDef terrain)
+        private void StartTerrainPlacement(TerrainDef terrain)
         {
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                 if (target.IsValid)
                 {
                     Find.CurrentMap.terrainGrid.SetTerrain(target.Cell, terrain);
                     Messages.Message($"Placed {terrain.label}", MessageTypeDefOf.NeutralEvent, false);
-                    ContinuousTerrainTargeting(terrain); // Continue until right-click
+                    
+                    // Close the GUI after placement
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
                 }
                 else
                 {
-                    Messages.Message("Terrain placement stopped", MessageTypeDefOf.NeutralEvent);
+                    Messages.Message("Terrain placement cancelled", MessageTypeDefOf.NeutralEvent);
                 }
-            }, null, delegate { 
-                Messages.Message("Terrain placement stopped", MessageTypeDefOf.NeutralEvent); 
             });
         }
     }

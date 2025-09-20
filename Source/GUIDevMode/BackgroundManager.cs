@@ -1,5 +1,6 @@
 using UnityEngine;
 using Verse;
+using RimWorld;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -10,6 +11,9 @@ namespace GUIDevMode
         private static List<Texture2D> backgroundTextures = new List<Texture2D>();
         private static Texture2D currentBackground = null;
         private static bool texturesLoaded = false;
+        private static int currentBackgroundIndex = 0;
+        private static int currentFallbackIndex = 0;
+        private static bool autoChangeOnOpen = true;
         
         // Default background colors if no textures are found
         private static readonly Color[] fallbackColors = new Color[]
@@ -19,6 +23,9 @@ namespace GUIDevMode
             new Color(0.1f, 0.2f, 0.1f, 0.8f), // Dark green
             new Color(0.2f, 0.15f, 0.1f, 0.8f), // Dark brown
             new Color(0.15f, 0.1f, 0.2f, 0.8f), // Dark purple
+            new Color(0.1f, 0.15f, 0.2f, 0.8f), // Steel blue
+            new Color(0.2f, 0.1f, 0.15f, 0.8f), // Burgundy
+            new Color(0.12f, 0.18f, 0.12f, 0.8f), // Forest green
         };
         private static Color currentFallbackColor = fallbackColors[0];
         
@@ -28,21 +35,31 @@ namespace GUIDevMode
             
             try
             {
-                // Try to load textures from common RimWorld texture paths
+                // Try to load textures from common RimWorld texture paths and mod paths
                 var possibleTextures = new string[]
                 {
                     "UI/Backgrounds/MenuBackground",
                     "UI/HeroArt/HeroArt_Planet",
-                    "UI/HeroArt/HeroArt_Colony1",
+                    "UI/HeroArt/HeroArt_Colony1", 
                     "UI/HeroArt/HeroArt_Colony2",
+                    "UI/HeroArt/HeroArt_Colony3",
                     "UI/Backgrounds/Background1",
-                    "UI/Backgrounds/Background2",
+                    "UI/Backgrounds/Background2", 
+                    "UI/Backgrounds/Background3",
                     "UI/Misc/ScreenshotModeOn",
                     "Things/Building/Art/SculptureSmall/SculptureSmall_a",
                     "Things/Building/Art/SculptureLarge/SculptureLarge_a",
                     "World/Hills",
                     "World/Mountain",
                     "World/FeatureIcons/Coast",
+                    "World/WorldObjects/Sites/GenericSite",
+                    "UI/Icons/MainButtons/Research",
+                    "UI/Icons/MainButtons/Architect",
+                    "UI/Icons/MainButtons/Production",
+                    "UI/Icons/MainButtons/Animals",
+                    "Things/Ethereal/Sky/SkyDay",
+                    "Things/Ethereal/Sky/SkyNight",
+                    "Things/Ethereal/Sky/SkySunset",
                 };
                 
                 foreach (var texturePath in possibleTextures)
@@ -52,6 +69,26 @@ namespace GUIDevMode
                     {
                         backgroundTextures.Add(texture);
                     }
+                }
+                
+                // Also try to find textures from mods
+                try
+                {
+                    var allTextures = ContentFinder<Texture2D>.GetAllInFolder("UI/Backgrounds/");
+                    if (allTextures != null)
+                    {
+                        foreach (var texture in allTextures)
+                        {
+                            if (texture != null && !backgroundTextures.Contains(texture))
+                            {
+                                backgroundTextures.Add(texture);
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore errors when searching mod folders
                 }
                 
                 if (backgroundTextures.Any())
@@ -76,11 +113,45 @@ namespace GUIDevMode
         {
             if (backgroundTextures.Any())
             {
-                currentBackground = backgroundTextures.RandomElement();
+                currentBackgroundIndex = Rand.Range(0, backgroundTextures.Count);
+                currentBackground = backgroundTextures[currentBackgroundIndex];
             }
             else
             {
-                currentFallbackColor = fallbackColors.RandomElement();
+                currentFallbackIndex = Rand.Range(0, fallbackColors.Length);
+                currentFallbackColor = fallbackColors[currentFallbackIndex];
+            }
+        }
+        
+        public static void OnWindowOpened()
+        {
+            if (autoChangeOnOpen)
+            {
+                SetRandomBackground();
+            }
+        }
+        
+        public static void ToggleAutoChange()
+        {
+            autoChangeOnOpen = !autoChangeOnOpen;
+            Messages.Message($"Auto-change backgrounds: {(autoChangeOnOpen ? "ON" : "OFF")}", MessageTypeDefOf.NeutralEvent);
+        }
+        
+        public static bool IsAutoChangeEnabled => autoChangeOnOpen;
+        
+        public static void SetNextBackground()
+        {
+            if (backgroundTextures.Any())
+            {
+                currentBackgroundIndex = (currentBackgroundIndex + 1) % backgroundTextures.Count;
+                currentBackground = backgroundTextures[currentBackgroundIndex];
+                Messages.Message($"Background {currentBackgroundIndex + 1}/{backgroundTextures.Count}", MessageTypeDefOf.NeutralEvent);
+            }
+            else
+            {
+                currentFallbackIndex = (currentFallbackIndex + 1) % fallbackColors.Length;
+                currentFallbackColor = fallbackColors[currentFallbackIndex];
+                Messages.Message($"Color {currentFallbackIndex + 1}/{fallbackColors.Length}", MessageTypeDefOf.NeutralEvent);
             }
         }
         

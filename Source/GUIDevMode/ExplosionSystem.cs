@@ -406,7 +406,12 @@ namespace GUIDevMode
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                 if (target.IsValid)
                 {
-                    if (isCustom)
+                    // Check if this is a gas-based explosion that needs special handling
+                    if (IsGasExplosion(damageDef))
+                    {
+                        CreateGasExplosion(target.Cell, damageDef, radius, isCustom, damageAmount);
+                    }
+                    else if (isCustom)
                     {
                         GenExplosion.DoExplosion(target.Cell, Find.CurrentMap, radius, damageDef, null, 
                             Mathf.RoundToInt(damageAmount));
@@ -519,6 +524,179 @@ namespace GUIDevMode
         public static void StartQuickExplosion(DamageDef damageDef, float radius, float damageAmount)
         {
             StartExplosionTargeting(damageDef, radius, true, damageAmount);
+        }
+        
+        /// <summary>
+        /// Determines if a damage type represents a gas-based explosion that needs persistent effects
+        /// </summary>
+        private static bool IsGasExplosion(DamageDef damageDef)
+        {
+            if (damageDef == null) return false;
+            
+            var defName = damageDef.defName.ToLowerInvariant();
+            return defName.Contains("gas") || 
+                   defName.Contains("toxic") || 
+                   defName.Contains("smoke") || 
+                   defName.Contains("poison") || 
+                   defName.Contains("chemical") ||
+                   defName.Contains("acid") ||
+                   defName.Contains("vapor") ||
+                   defName.Contains("mist") ||
+                   defName == "toxgas";
+        }
+        
+        /// <summary>
+        /// Creates a gas explosion with persistent gas clouds
+        /// </summary>
+        private static void CreateGasExplosion(IntVec3 center, DamageDef damageDef, float radius, bool isCustom, float damageAmount)
+        {
+            try
+            {
+                var map = Find.CurrentMap;
+                if (map == null) return;
+                
+                var defName = damageDef.defName.ToLowerInvariant();
+                
+                // First do a small initial explosion for immediate effects
+                var initialRadius = radius * 0.3f;
+                if (isCustom)
+                {
+                    GenExplosion.DoExplosion(center, map, initialRadius, damageDef, null, Mathf.RoundToInt(damageAmount * 0.5f));
+                }
+                else
+                {
+                    GenExplosion.DoExplosion(center, map, initialRadius, damageDef, null);
+                }
+                
+                // Create persistent gas clouds in the area
+                foreach (var cell in GenRadial.RadialCellsAround(center, radius, true))
+                {
+                    if (!cell.InBounds(map)) continue;
+                    
+                    var distance = cell.DistanceTo(center);
+                    if (distance > radius) continue;
+                    
+                    // Create gas density based on distance from center
+                    var gasIntensity = 1f - (distance / radius);
+                    if (gasIntensity <= 0) continue;
+                    
+                    // Spawn gas effects with varying intensity
+                    for (int i = 0; i < Mathf.RoundToInt(gasIntensity * 5); i++)
+                    {
+                        // Create visual gas effects that last longer
+                        FleckMaker.ThrowSmoke(cell.ToVector3Shifted(), map, 2f + gasIntensity * 3f);
+                        FleckMaker.ThrowDustPuffThick(cell.ToVector3Shifted(), map, 3f + gasIntensity * 2f, GetGasColor(damageDef));
+                        
+                        // Add additional lingering effects
+                        if (Rand.Chance(gasIntensity))
+                        {
+                            FleckMaker.ThrowAirPuffUp(cell.ToVector3Shifted(), map);
+                        }
+                    }
+                    
+                    // Apply immediate damage to pawns in gas area
+                    var pawnsInCell = cell.GetThingList(map).OfType<Pawn>().ToList();
+                    foreach (var pawn in pawnsInCell)
+                    {
+                        if (pawn.Dead) continue;
+                        
+                        var damageAmount_actual = isCustom ? damageAmount * gasIntensity * 0.3f : 8f * gasIntensity;
+                        var damageInfo = new DamageInfo(damageDef, damageAmount_actual);
+                        pawn.TakeDamage(damageInfo);
+                        
+                        // Add gas-specific effects
+                        if (defName.Contains("toxic") && pawn.health?.hediffSet != null)
+                        {
+                            // Try to add food poisoning as a toxic effect
+                            try
+                            {
+                                var hediffDef = HediffDefOf.FoodPoisoning;
+                                if (hediffDef != null && !pawn.health.hediffSet.HasHediff(hediffDef))
+                                {
+                                    pawn.health.AddHediff(hediffDef);
+                                }
+                            }
+                            catch { /* Ignore if hediff fails */ }
+                        }
+                    }
+                }
+                
+                // Create additional delayed gas effects for persistence
+                CreateDelayedGasEffects(center, damageDef, radius);
+                
+                Messages.Message($"{damageDef.label} gas cloud created (radius {radius:F1}) - enhanced persistent effects", 
+                    MessageTypeDefOf.NeutralEvent);
+                    
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"GUIDevMode: Failed to create gas explosion: {ex}");
+                // Fallback to regular explosion
+                if (isCustom)
+                {
+                    GenExplosion.DoExplosion(center, Find.CurrentMap, radius, damageDef, null, Mathf.RoundToInt(damageAmount));
+                }
+                else
+                {
+                    GenExplosion.DoExplosion(center, Find.CurrentMap, radius, damageDef, null);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Creates delayed gas effects for better persistence without complex scheduling
+        /// </summary>
+        private static void CreateDelayedGasEffects(IntVec3 center, DamageDef damageDef, float radius)
+        {
+            try
+            {
+                var map = Find.CurrentMap;
+                if (map == null) return;
+                
+                // Create multiple waves of gas effects with delays
+                for (int wave = 1; wave <= 3; wave++)
+                {
+                    var delay = wave * 120; // 2 seconds per wave
+                    var waveRadius = radius * (1f - wave * 0.2f); // Gradually shrinking
+                    
+                    // Use a simple timer approach
+                    var effectCells = GenRadial.RadialCellsAround(center, waveRadius, true).ToList();
+                    
+                    foreach (var cell in effectCells.Take(20)) // Limit to prevent performance issues
+                    {
+                        if (!cell.InBounds(map)) continue;
+                        
+                        var distance = cell.DistanceTo(center);
+                        if (distance > waveRadius) continue;
+                        
+                        // Create lingering visual effects
+                        for (int i = 0; i < 2; i++)
+                        {
+                            FleckMaker.ThrowSmoke(cell.ToVector3Shifted(), map, 2f + wave);
+                            FleckMaker.ThrowDustPuffThick(cell.ToVector3Shifted(), map, 2f + wave, GetGasColor(damageDef));
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"GUIDevMode: Failed to create delayed gas effects: {ex}");
+            }
+        }
+        
+        /// <summary>
+        /// Gets appropriate color for gas type
+        /// </summary>
+        private static Color GetGasColor(DamageDef damageDef)
+        {
+            var defName = damageDef.defName.ToLowerInvariant();
+            
+            if (defName.Contains("toxic") || defName.Contains("poison")) return Color.green;
+            if (defName.Contains("acid")) return Color.yellow;
+            if (defName.Contains("smoke")) return Color.gray;
+            if (defName.Contains("chemical")) return new Color(0.5f, 1f, 0.5f); // Light green
+            
+            return Color.gray; // Default gas color
         }
     }
 }

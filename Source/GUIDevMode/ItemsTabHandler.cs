@@ -15,6 +15,8 @@ namespace GUIDevMode
         private int spawnQuantity = 1;
         private QualityCategory spawnQuality = QualityCategory.Normal;
         private ThingDef selectedStuff = null;
+        private bool spawnMaxStack = false;
+        private int itemDisplayCap = 3000;
         
         // UI state
         private bool showItemDetails = false;
@@ -42,27 +44,10 @@ namespace GUIDevMode
             listing.Begin(rect);
             
             listing.Label("Item Categories:");
-            
-            // Item display limit controls
-            var limitRect = listing.GetRect(30f);
-            Widgets.Label(limitRect.LeftPart(0.6f), $"Limit: {CacheManager.ItemDisplayLimit}");
-            if (Widgets.ButtonText(limitRect.RightPart(0.4f), "Reset"))
-            {
-                CacheManager.ResetItemDisplayLimit();
-            }
-            
-            var sliderRect = listing.GetRect(20f);
-            var newLimit = (int)Widgets.HorizontalSlider(sliderRect, CacheManager.ItemDisplayLimit, 10, 5000);
-            if (newLimit != CacheManager.ItemDisplayLimit)
-            {
-                CacheManager.ItemDisplayLimit = newLimit;
-                Log.Message($"[GUI Dev Mode] Item display limit changed to {newLimit}");
-            }
-            
             listing.Gap(8f);
             
             // Categories list
-            var categoriesListRect = listing.GetRect(rect.height - 100f);
+            var categoriesListRect = listing.GetRect(rect.height - 50f);
             var viewRect = new Rect(0, 0, categoriesListRect.width - 16f, CacheManager.AllItemCategories.Count * 25f);
             
             Widgets.BeginScrollView(categoriesListRect, ref categoryScrollPosition, viewRect);
@@ -127,12 +112,11 @@ namespace GUIDevMode
                     item.defName.ToLower().Contains(itemSearchFilter.ToLower())).ToList();
             }
             
-            // Apply user's display limit to prevent lag
-            var settings = GUIDevModeMod.Settings;
-            if (settings.limitItemDisplay && items.Count > settings.itemDisplayLimit)
+            // Apply item display cap to prevent lag
+            if (items.Count > itemDisplayCap)
             {
-                items = items.Take(settings.itemDisplayLimit).ToList();
-                listing.Label($"Showing {settings.itemDisplayLimit} of {CacheManager.GetItemsByCategory(selectedItemCategory).Count} items (limited for performance)");
+                items = items.Take(itemDisplayCap).ToList();
+                listing.Label($"Showing {itemDisplayCap} of {CacheManager.GetItemsByCategory(selectedItemCategory).Count} items (use search to narrow)");
             }
             else
             {
@@ -164,21 +148,46 @@ namespace GUIDevMode
             Widgets.Label(quantityRect.LeftPart(0.3f), $"Quantity: {spawnQuantity}");
             spawnQuantity = (int)Widgets.HorizontalSlider(quantityRect.RightPart(0.7f), spawnQuantity, 1, 100);
             
-            // Quality control
-            var qualityRect = listing.GetRect(30f);
-            Widgets.Label(qualityRect.LeftPart(0.3f), $"Quality: {spawnQuality}");
-            if (Widgets.ButtonText(qualityRect.RightPart(0.7f), spawnQuality.GetLabel()))
+            // Max stack option
+            listing.CheckboxLabeled("Spawn max stack", ref spawnMaxStack);
+            
+            // Quality control (only show for items that can have quality)
+            if (selectedItemForDetails?.HasComp(typeof(CompQuality)) == true)
             {
-                CycleQuality();
+                var qualityRect = listing.GetRect(30f);
+                Widgets.Label(qualityRect.LeftPart(0.3f), $"Quality: {spawnQuality}");
+                if (Widgets.ButtonText(qualityRect.RightPart(0.7f), spawnQuality.GetLabel()))
+                {
+                    CycleQuality();
+                }
             }
             
             // Stuff selection for items that can have materials
-            var stuffRect = listing.GetRect(30f);
-            Widgets.Label(stuffRect.LeftPart(0.3f), "Material:");
-            var stuffText = selectedStuff?.label ?? "Default";
-            if (Widgets.ButtonText(stuffRect.RightPart(0.7f), stuffText))
+            if (selectedItemForDetails?.MadeFromStuff == true)
             {
-                CycleStuff();
+                var stuffRect = listing.GetRect(30f);
+                Widgets.Label(stuffRect.LeftPart(0.3f), "Material:");
+                var stuffText = selectedStuff?.label ?? "Default";
+                if (Widgets.ButtonText(stuffRect.RightPart(0.7f), stuffText))
+                {
+                    CycleStuff();
+                }
+            }
+            
+            // Item display cap control
+            var capRect = listing.GetRect(30f);
+            Widgets.Label(capRect.LeftPart(0.5f), $"Item cap: {itemDisplayCap}");
+            if (Widgets.ButtonText(capRect.RightPart(0.5f), "Adjust"))
+            {
+                var options = new List<FloatMenuOption>
+                {
+                    new FloatMenuOption("1000", () => itemDisplayCap = 1000),
+                    new FloatMenuOption("3000 (default)", () => itemDisplayCap = 3000),
+                    new FloatMenuOption("5000", () => itemDisplayCap = 5000),
+                    new FloatMenuOption("10000", () => itemDisplayCap = 10000),
+                    new FloatMenuOption("No limit", () => itemDisplayCap = int.MaxValue)
+                };
+                Find.WindowStack.Add(new FloatMenu(options));
             }
         }
         
@@ -190,6 +199,7 @@ namespace GUIDevMode
             var labelText = item.label ?? item.defName;
             if (Widgets.ButtonText(buttonRect, labelText))
             {
+                selectedItemForDetails = item; // Set for quality/material filtering
                 SpawnItem(item);
             }
             
@@ -222,7 +232,16 @@ namespace GUIDevMode
                         stuff = null; // Clear stuff if item can't use materials
                     
                     var thing = ThingMaker.MakeThing(item, stuff);
-                    thing.stackCount = spawnQuantity;
+                    
+                    // Use max stack if enabled, otherwise use manual quantity
+                    if (spawnMaxStack)
+                    {
+                        thing.stackCount = thing.def.stackLimit;
+                    }
+                    else
+                    {
+                        thing.stackCount = spawnQuantity;
+                    }
                     
                     // Apply quality if applicable
                     if (thing.TryGetComp<CompQuality>() != null)
@@ -234,8 +253,12 @@ namespace GUIDevMode
                     
                     var materialText = stuff != null ? $" ({stuff.label})" : "";
                     var qualityText = thing.TryGetComp<CompQuality>() != null ? $" [{spawnQuality.GetLabel()}]" : "";
-                    Messages.Message($"Spawned {spawnQuantity}x {item.label}{materialText}{qualityText}", 
+                    var stackText = spawnMaxStack ? $" (max stack: {thing.stackCount})" : $" x{spawnQuantity}";
+                    Messages.Message($"Spawned {item.label}{materialText}{qualityText}{stackText}", 
                         MessageTypeDefOf.NeutralEvent);
+                    
+                    // Auto-close window after spawning
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
                 }
             });
         }

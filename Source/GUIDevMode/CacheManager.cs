@@ -14,30 +14,26 @@ namespace GUIDevMode
         private static Dictionary<string, List<TerrainDef>> cachedTerrainByCategory = new Dictionary<string, List<TerrainDef>>();
         private static Dictionary<string, List<PawnKindDef>> cachedPawnsByCategory = new Dictionary<string, List<PawnKindDef>>();
         
+        // Mod-based caches
+        private static Dictionary<string, Dictionary<string, List<ThingDef>>> cachedItemsByMod = new Dictionary<string, Dictionary<string, List<ThingDef>>>();
+        private static Dictionary<string, List<ThingDef>> cachedItemsByModFlat = new Dictionary<string, List<ThingDef>>();
+        
         // Category lists
         private static List<string> allItemCategories = new List<string>();
         private static List<string> allBuildingCategories = new List<string>();
         private static List<string> allTerrainCategories = new List<string>();
         private static List<string> allPawnCategories = new List<string>();
+        private static List<string> allModNames = new List<string>();
         
         // Cache expiry tracking
         private static int lastCacheUpdateTick = -1;
         private static int cacheExpiryInterval = 60000; // 1 in-game day
         
-        // Performance settings
-        private static int defaultItemDisplayLimit = 2000;
-        private static int currentItemDisplayLimit = 2000;
-        
         public static List<string> AllItemCategories => allItemCategories;
         public static List<string> AllBuildingCategories => allBuildingCategories;
         public static List<string> AllTerrainCategories => allTerrainCategories;
         public static List<string> AllPawnCategories => allPawnCategories;
-        
-        public static int ItemDisplayLimit 
-        { 
-            get => currentItemDisplayLimit; 
-            set => currentItemDisplayLimit = Mathf.Max(10, value); 
-        }
+        public static List<string> AllModNames => allModNames;
         
         public static void RefreshAllCaches()
         {
@@ -46,12 +42,13 @@ namespace GUIDevMode
             Log.Message("[GUI Dev Mode] Refreshing all caches...");
             
             RefreshItemCache();
+            RefreshModBasedItemCache();
             RefreshBuildingCache();
             RefreshTerrainCache();
             RefreshPawnCache();
             
             lastCacheUpdateTick = Find.TickManager?.TicksGame ?? 0;
-            Log.Message($"[GUI Dev Mode] Cache refresh complete. Found {allItemCategories.Count} item categories, {allBuildingCategories.Count} building categories");
+            Log.Message($"[GUI Dev Mode] Cache refresh complete. Found {allItemCategories.Count} item categories, {allModNames.Count} mods with items");
         }
         
         public static bool IsCacheExpired()
@@ -81,6 +78,41 @@ namespace GUIDevMode
             
             // Sort categories
             allItemCategories.Sort();
+        }
+        
+        private static void RefreshModBasedItemCache()
+        {
+            cachedItemsByMod.Clear();
+            cachedItemsByModFlat.Clear();
+            allModNames.Clear();
+            
+            var allItems = DefDatabase<ThingDef>.AllDefs
+                .Where(def => def.category == ThingCategory.Item && def.BaseMarketValue > 0)
+                .OrderBy(def => def.label);
+            
+            foreach (var item in allItems)
+            {
+                var modName = GetModName(item);
+                var category = GetItemCategory(item);
+                
+                // Organize by mod first, then by category within mod
+                if (!cachedItemsByMod.ContainsKey(modName))
+                {
+                    cachedItemsByMod[modName] = new Dictionary<string, List<ThingDef>>();
+                    cachedItemsByModFlat[modName] = new List<ThingDef>();
+                    allModNames.Add(modName);
+                }
+                
+                if (!cachedItemsByMod[modName].ContainsKey(category))
+                {
+                    cachedItemsByMod[modName][category] = new List<ThingDef>();
+                }
+                
+                cachedItemsByMod[modName][category].Add(item);
+                cachedItemsByModFlat[modName].Add(item);
+            }
+            
+            allModNames.Sort();
         }
         
         private static void RefreshBuildingCache()
@@ -155,37 +187,82 @@ namespace GUIDevMode
         public static List<ThingDef> GetItemsByCategory(string category)
         {
             if (IsCacheExpired()) RefreshAllCaches();
+
+            if (!cachedItemsByCategory.ContainsKey(category))
+                return new List<ThingDef>();
+                
+            var allItems = cachedItemsByCategory[category];
+            var settings = GUIDevModeMod.Settings;
+            
+            if (settings.limitItemDisplay && allItems.Count > settings.itemDisplayLimit)
+            {
+                return allItems.Take(settings.itemDisplayLimit).ToList();
+            }
+            
+            return allItems;
+        }
+        
+        public static List<ThingDef> GetFullItemsByCategory(string category)
+        {
+            if (IsCacheExpired()) RefreshAllCaches();
             
             return cachedItemsByCategory.ContainsKey(category) 
-                ? cachedItemsByCategory[category].Take(currentItemDisplayLimit).ToList()
+                ? cachedItemsByCategory[category] 
                 : new List<ThingDef>();
         }
         
         public static List<ThingDef> GetBuildingsByCategory(string category)
         {
             if (IsCacheExpired()) RefreshAllCaches();
+
+            if (!cachedBuildingsByCategory.ContainsKey(category))
+                return new List<ThingDef>();
+                
+            var allBuildings = cachedBuildingsByCategory[category];
+            var settings = GUIDevModeMod.Settings;
             
-            return cachedBuildingsByCategory.ContainsKey(category) 
-                ? cachedBuildingsByCategory[category].Take(currentItemDisplayLimit).ToList()
-                : new List<ThingDef>();
+            if (settings.limitItemDisplay && allBuildings.Count > settings.itemDisplayLimit)
+            {
+                return allBuildings.Take(settings.itemDisplayLimit).ToList();
+            }
+            
+            return allBuildings;
         }
         
         public static List<TerrainDef> GetTerrainByCategory(string category)
         {
             if (IsCacheExpired()) RefreshAllCaches();
+
+            if (!cachedTerrainByCategory.ContainsKey(category))
+                return new List<TerrainDef>();
+                
+            var allTerrain = cachedTerrainByCategory[category];
+            var settings = GUIDevModeMod.Settings;
             
-            return cachedTerrainByCategory.ContainsKey(category) 
-                ? cachedTerrainByCategory[category].Take(currentItemDisplayLimit).ToList()
-                : new List<TerrainDef>();
+            if (settings.limitItemDisplay && allTerrain.Count > settings.itemDisplayLimit)
+            {
+                return allTerrain.Take(settings.itemDisplayLimit).ToList();
+            }
+            
+            return allTerrain;
         }
         
         public static List<PawnKindDef> GetPawnsByCategory(string category)
         {
             if (IsCacheExpired()) RefreshAllCaches();
+
+            if (!cachedPawnsByCategory.ContainsKey(category))
+                return new List<PawnKindDef>();
+                
+            var allPawns = cachedPawnsByCategory[category];
+            var settings = GUIDevModeMod.Settings;
             
-            return cachedPawnsByCategory.ContainsKey(category) 
-                ? cachedPawnsByCategory[category].Take(currentItemDisplayLimit).ToList()
-                : new List<PawnKindDef>();
+            if (settings.limitItemDisplay && allPawns.Count > settings.itemDisplayLimit)
+            {
+                return allPawns.Take(settings.itemDisplayLimit).ToList();
+            }
+            
+            return allPawns;
         }
         
         private static string GetItemCategory(ThingDef item)
@@ -203,6 +280,36 @@ namespace GUIDevMode
             if (item.IsArt) return "Art";
             if (item.comps?.Any(c => c is CompProperties_Power) == true) return "Electronics";
             return "Miscellaneous";
+        }
+        
+        private static string GetModName(Def def)
+        {
+            if (def?.modContentPack?.PackageId != null)
+            {
+                var modName = def.modContentPack.Name;
+                if (string.IsNullOrEmpty(modName))
+                    modName = def.modContentPack.PackageId;
+                return modName;
+            }
+            return "Core";
+        }
+        
+        // Mod-based item retrieval methods
+        public static Dictionary<string, List<ThingDef>> GetItemCategoriesForMod(string modName)
+        {
+            return cachedItemsByMod.ContainsKey(modName) ? cachedItemsByMod[modName] : new Dictionary<string, List<ThingDef>>();
+        }
+        
+        public static List<ThingDef> GetItemsFromModCategory(string modName, string category)
+        {
+            if (cachedItemsByMod.ContainsKey(modName) && cachedItemsByMod[modName].ContainsKey(category))
+                return cachedItemsByMod[modName][category];
+            return new List<ThingDef>();
+        }
+        
+        public static List<ThingDef> GetAllItemsFromMod(string modName)
+        {
+            return cachedItemsByModFlat.ContainsKey(modName) ? cachedItemsByModFlat[modName] : new List<ThingDef>();
         }
         
         private static string GetBuildingCategory(ThingDef building)
@@ -244,24 +351,6 @@ namespace GUIDevMode
             allPawnCategories.Clear();
             lastCacheUpdateTick = -1;
             Log.Message("[GUI Dev Mode] All caches cleared");
-        }
-        
-        public static void ResetItemDisplayLimit()
-        {
-            currentItemDisplayLimit = defaultItemDisplayLimit;
-        }
-        
-        public static string GetCacheStatus()
-        {
-            if (lastCacheUpdateTick == -1) return "Not initialized";
-            
-            var elapsed = Find.TickManager?.TicksGame - lastCacheUpdateTick ?? 0;
-            var remaining = cacheExpiryInterval - elapsed;
-            
-            if (remaining <= 0) return "Expired";
-            
-            var daysRemaining = remaining / 60000f;
-            return $"Valid ({daysRemaining:F1} days remaining)";
         }
     }
 }

@@ -46,7 +46,7 @@ namespace GUIDevMode
             listing.Gap(12f);
             
             listing.Label("Interface:");
-            listing.CheckboxLabeled("Use Bottom Bar Placement", ref Settings.useBottomBarPlacement);
+            listing.CheckboxLabeled("Hide button (make invisible)", ref Settings.useBottomBarPlacement);
             listing.CheckboxLabeled("Show Tool Tips", ref Settings.showToolTips);
             listing.CheckboxLabeled("Confirm Destructive Actions", ref Settings.confirmDestructiveActions);
             listing.CheckboxLabeled("Explosion Radius Preview Persistent", ref Settings.explosionRadiusPreviewPersistent, 
@@ -63,7 +63,13 @@ namespace GUIDevMode
             if (Settings.limitItemDisplay)
             {
                 listing.Label($"Item Display Limit: {Settings.itemDisplayLimit}");
-                Settings.itemDisplayLimit = (int)listing.Slider(Settings.itemDisplayLimit, 500f, 5000f);
+                Settings.itemDisplayLimit = (int)listing.Slider(Settings.itemDisplayLimit, 100f, 10000f);
+                if (Settings.itemDisplayLimit > 5000)
+                {
+                    GUI.color = Color.yellow;
+                    listing.Label("Warning: High limits may cause lag with large mod lists");
+                    GUI.color = Color.white;
+                }
             }
             
             listing.Gap(12f);
@@ -106,22 +112,7 @@ namespace GUIDevMode
         }
     }
     
-    // Harmony patch to ensure our GameComponent gets added
-    [HarmonyPatch(typeof(Game), "AddComponent")]
-    public static class Game_AddComponent_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Game __instance)
-        {
-            if (__instance.components.Find(x => x is GUIDevModeButton) == null)
-            {
-                __instance.components.Add(new GUIDevModeButton(__instance));
-                Log.Message("[GUI Developer Mode] GameComponent added successfully");
-            }
-        }
-    }
-    
-    // Alternative patch to add the component when the game starts
+    // Harmony patch to ensure our GameComponent gets added when game starts
     [HarmonyPatch(typeof(Game), "InitNewGame")]
     public static class Game_InitNewGame_Patch
     {
@@ -131,7 +122,7 @@ namespace GUIDevMode
             if (__instance.components.Find(x => x is GUIDevModeButton) == null)
             {
                 __instance.components.Add(new GUIDevModeButton(__instance));
-                Log.Message("[GUI Developer Mode] GameComponent added to new game");
+                Log.Message("[GUI Developer Mode] GameComponent added successfully");
             }
         }
     }

@@ -33,7 +33,7 @@ namespace GUIDevMode
         
         public GUIDevModeWindow()
         {
-            doCloseButton = true;
+            doCloseButton = false; // Remove close button that covers UI elements
             doCloseX = true;
             resizeable = true;
             draggable = true;
@@ -42,7 +42,7 @@ namespace GUIDevMode
             
             // Initialize background system
             BackgroundManager.LoadBackgroundTextures();
-            BackgroundManager.SetRandomBackground();
+            BackgroundManager.OnWindowOpened();
             
             // Initialize tab handlers
             itemsTabHandler = new ItemsTabHandler();
@@ -153,9 +153,24 @@ namespace GUIDevMode
             // Background change button
             var bgButtonRect = new Rect(currentX + 5f, rect.y, 95f, rect.height);
             GUI.backgroundColor = new Color(0.7f, 0.9f, 1f); // Light blue
-            if (Widgets.ButtonText(bgButtonRect, "New BG"))
+            
+            var buttonText = BackgroundManager.IsAutoChangeEnabled ? "BG: Auto" : "BG: Manual";
+            if (Widgets.ButtonText(bgButtonRect, buttonText))
             {
-                BackgroundManager.SetRandomBackground();
+                if (Event.current.button == 1) // Right click
+                {
+                    BackgroundManager.ToggleAutoChange();
+                }
+                else // Left click
+                {
+                    BackgroundManager.SetNextBackground();
+                }
+            }
+            
+            // Tooltip for background button
+            if (Mouse.IsOver(bgButtonRect))
+            {
+                TooltipHandler.TipRegion(bgButtonRect, "Left-click: Next background\nRight-click: Toggle auto-change");
             }
             
             GUI.backgroundColor = Color.white;

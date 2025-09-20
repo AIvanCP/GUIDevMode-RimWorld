@@ -13,7 +13,15 @@ namespace GUIDevMode
         private string selectedPawnCategory = "";
         private string pawnSearchFilter = "";
         private PawnKindDef selectedRace = null;
-        private bool spawnAsFriendly = true;
+        
+        // Faction spawning options
+        public enum SpawnFaction
+        {
+            JoinPlayer,
+            Friendly,
+            Hostile
+        }
+        private SpawnFaction selectedSpawnFaction = SpawnFaction.Friendly;
         
         // Gift pods settings
         private bool useGiftPods = false;
@@ -28,7 +36,22 @@ namespace GUIDevMode
             listing.Gap(5f);
             
             // Faction selection
-            listing.CheckboxLabeled("Spawn as friendly (unchecked = hostile)", ref spawnAsFriendly);
+            listing.Label("Spawn as:");
+            
+            var factionRect = listing.GetRect(25f);
+            var joinPlayerRect = new Rect(factionRect.x, factionRect.y, factionRect.width / 3f - 5f, factionRect.height);
+            var friendlyRect = new Rect(joinPlayerRect.xMax + 5f, factionRect.y, factionRect.width / 3f - 5f, factionRect.height);
+            var hostileRect = new Rect(friendlyRect.xMax + 5f, factionRect.y, factionRect.width / 3f - 5f, factionRect.height);
+            
+            if (Widgets.RadioButtonLabeled(joinPlayerRect, "Join Colony", selectedSpawnFaction == SpawnFaction.JoinPlayer))
+                selectedSpawnFaction = SpawnFaction.JoinPlayer;
+            if (Widgets.RadioButtonLabeled(friendlyRect, "Friendly", selectedSpawnFaction == SpawnFaction.Friendly))
+                selectedSpawnFaction = SpawnFaction.Friendly;
+            if (Widgets.RadioButtonLabeled(hostileRect, "Hostile", selectedSpawnFaction == SpawnFaction.Hostile))
+                selectedSpawnFaction = SpawnFaction.Hostile;
+            
+            listing.Gap(5f);
+            
             listing.CheckboxLabeled("Use gift pods for delivery", ref useGiftPods);
             
             if (useGiftPods)
@@ -148,7 +171,7 @@ namespace GUIDevMode
             if (Widgets.ButtonText(buttonRect, labelText))
             {
                 selectedRace = pawn;
-                SpawnPawnWithOptions(pawn);
+                ShowSpawnConfirmation(pawn);
             }
             
             // Quick info
@@ -174,26 +197,26 @@ namespace GUIDevMode
             
             if (Widgets.ButtonText(new Rect(currentX, rect.y, buttonWidth, rect.height), "Human"))
             {
-                SpawnPawnWithOptions(PawnKindDefOf.Colonist);
+                ShowSpawnConfirmation(PawnKindDefOf.Colonist);
             }
             currentX += buttonWidth + 4f;
             
             if (Widgets.ButtonText(new Rect(currentX, rect.y, buttonWidth, rect.height), "Random Animal"))
             {
-                SpawnRandomAnimal();
+                ShowRandomAnimalConfirmation();
             }
             currentX += buttonWidth + 4f;
             
             if (Widgets.ButtonText(new Rect(currentX, rect.y, buttonWidth, rect.height), "Selected Race"))
             {
                 var raceToSpawn = selectedRace ?? PawnKindDefOf.Colonist;
-                SpawnPawnWithOptions(raceToSpawn);
+                ShowSpawnConfirmation(raceToSpawn);
             }
             currentX += buttonWidth + 4f;
             
             if (Widgets.ButtonText(new Rect(currentX, rect.y, buttonWidth, rect.height), "Gift Pods"))
             {
-                SpawnGiftPods();
+                ShowGiftPodsConfirmation();
             }
         }
         
@@ -214,12 +237,39 @@ namespace GUIDevMode
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                 if (target.IsValid)
                 {
-                    var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
+                    Faction faction;
+                    switch (selectedSpawnFaction)
+                    {
+                        case SpawnFaction.JoinPlayer:
+                            faction = Faction.OfPlayer;
+                            break;
+                        case SpawnFaction.Friendly:
+                            faction = Find.FactionManager.AllFactions
+                                .Where(f => f != Faction.OfPlayer && !f.HostileTo(Faction.OfPlayer) && !f.IsPlayer)
+                                .RandomElementWithFallback() ?? Faction.OfPlayer;
+                            break;
+                        case SpawnFaction.Hostile:
+                            faction = Find.FactionManager.RandomEnemyFaction() ?? 
+                                Find.FactionManager.AllFactions.Where(f => f.HostileTo(Faction.OfPlayer)).RandomElementWithFallback();
+                            break;
+                        default:
+                            faction = Faction.OfPlayer;
+                            break;
+                    }
+                    
                     var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
                     GenSpawn.Spawn(pawn, target.Cell, Find.CurrentMap);
                     
-                    var factionText = spawnAsFriendly ? "friendly" : "hostile";
+                    string factionText = selectedSpawnFaction == SpawnFaction.JoinPlayer ? "colonist" :
+                                       selectedSpawnFaction == SpawnFaction.Friendly ? "friendly" : "hostile";
                     Messages.Message($"Spawned {factionText} {pawn.LabelShort}", MessageTypeDefOf.NeutralEvent);
+                    
+                    // Restart for continuous placement
+                    SpawnPawnDirect(pawnKind);
+                }
+                else
+                {
+                    Messages.Message("Pawn spawning stopped", MessageTypeDefOf.NeutralEvent);
                 }
             });
         }
@@ -237,7 +287,26 @@ namespace GUIDevMode
                 Find.Targeter.BeginTargeting(targetingParams, target => {
                     if (target.IsValid)
                     {
-                        var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
+                        Faction faction;
+                        switch (selectedSpawnFaction)
+                        {
+                            case SpawnFaction.JoinPlayer:
+                                faction = Faction.OfPlayer;
+                                break;
+                            case SpawnFaction.Friendly:
+                                faction = Find.FactionManager.AllFactions
+                                    .Where(f => f != Faction.OfPlayer && !f.HostileTo(Faction.OfPlayer) && !f.IsPlayer)
+                                    .RandomElementWithFallback() ?? Faction.OfPlayer;
+                                break;
+                            case SpawnFaction.Hostile:
+                                faction = Find.FactionManager.RandomEnemyFaction() ?? 
+                                    Find.FactionManager.AllFactions.Where(f => f.HostileTo(Faction.OfPlayer)).RandomElementWithFallback();
+                                break;
+                            default:
+                                faction = Faction.OfPlayer;
+                                break;
+                        }
+                        
                         var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
                         
                         var pods = new List<Thing> { pawn };
@@ -259,7 +328,8 @@ namespace GUIDevMode
                         
                         DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
                         
-                        var factionText = spawnAsFriendly ? "friendly" : "hostile";
+                        string factionText = selectedSpawnFaction == SpawnFaction.JoinPlayer ? "colonist" :
+                                           selectedSpawnFaction == SpawnFaction.Friendly ? "friendly" : "hostile";
                         Messages.Message($"Gift pods delivered {factionText} {pawn.LabelShort} to drop zone", MessageTypeDefOf.PositiveEvent);
                     }
                 }, null, delegate {
@@ -273,7 +343,26 @@ namespace GUIDevMode
                 Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                     if (target.IsValid)
                     {
-                        var faction = spawnAsFriendly ? Faction.OfPlayer : Find.FactionManager.RandomEnemyFaction();
+                        Faction faction;
+                        switch (selectedSpawnFaction)
+                        {
+                            case SpawnFaction.JoinPlayer:
+                                faction = Faction.OfPlayer;
+                                break;
+                            case SpawnFaction.Friendly:
+                                faction = Find.FactionManager.AllFactions
+                                    .Where(f => f != Faction.OfPlayer && !f.HostileTo(Faction.OfPlayer) && !f.IsPlayer)
+                                    .RandomElementWithFallback() ?? Faction.OfPlayer;
+                                break;
+                            case SpawnFaction.Hostile:
+                                faction = Find.FactionManager.RandomEnemyFaction() ?? 
+                                    Find.FactionManager.AllFactions.Where(f => f.HostileTo(Faction.OfPlayer)).RandomElementWithFallback();
+                                break;
+                            default:
+                                faction = Faction.OfPlayer;
+                                break;
+                        }
+                        
                         var pawn = PawnGenerator.GeneratePawn(pawnKind, faction);
                         
                         var pods = new List<Thing> { pawn };
@@ -292,7 +381,8 @@ namespace GUIDevMode
                         CreateDropPodLandingIndicator(target.Cell);
                         DropPodUtility.DropThingsNear(target.Cell, Find.CurrentMap, pods);
                         
-                        var factionText = spawnAsFriendly ? "friendly" : "hostile";
+                        string factionText = selectedSpawnFaction == SpawnFaction.JoinPlayer ? "colonist" :
+                                           selectedSpawnFaction == SpawnFaction.Friendly ? "friendly" : "hostile";
                         Messages.Message($"Gift pods delivered {factionText} {pawn.LabelShort} (no drop zone found)", MessageTypeDefOf.PositiveEvent);
                     }
                 });
@@ -411,6 +501,120 @@ namespace GUIDevMode
                     highlightColor.a = 0.3f;
                     GenDraw.DrawFieldEdges(cells, highlightColor);
                 }
+            }
+        }
+        
+        /// <summary>
+        /// Shows confirmation dialog for spawning with description and image
+        /// </summary>
+        private void ShowSpawnConfirmation(PawnKindDef pawnKind)
+        {
+            var description = GetPawnDescription(pawnKind);
+            var title = $"Spawn {pawnKind.label?.CapitalizeFirst() ?? pawnKind.defName}";
+            
+            var confirmDialog = new Dialog_MessageBox(
+                text: $"{title}\n\n{description}\n\nSpawn method: {(useGiftPods ? "Gift Pods" : "Direct placement")}\nFaction: {GetFactionDescription()}",
+                title: title,
+                buttonAText: "Spawn",
+                buttonAAction: () => {
+                    SpawnPawnWithOptions(pawnKind);
+                    // Auto-close window after confirmation
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                },
+                buttonBText: "Cancel",
+                buttonBAction: null
+            );
+            
+            Find.WindowStack.Add(confirmDialog);
+        }
+        
+        /// <summary>
+        /// Shows confirmation for random animal spawning
+        /// </summary>
+        private void ShowRandomAnimalConfirmation()
+        {
+            var description = "Spawns a random animal from available animal races. The animal will be wild unless tamed through faction settings.";
+            
+            var confirmDialog = new Dialog_MessageBox(
+                text: $"Spawn Random Animal\n\n{description}\n\nSpawn method: {(useGiftPods ? "Gift Pods" : "Direct placement")}\nFaction: {GetFactionDescription()}",
+                title: "Spawn Random Animal", 
+                buttonAText: "Spawn",
+                buttonAAction: () => {
+                    SpawnRandomAnimal();
+                    // Auto-close window after confirmation
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                },
+                buttonBText: "Cancel",
+                buttonBAction: null
+            );
+            
+            Find.WindowStack.Add(confirmDialog);
+        }
+        
+        /// <summary>
+        /// Shows confirmation for gift pods
+        /// </summary>
+        private void ShowGiftPodsConfirmation()
+        {
+            var description = "Spawns gift pods containing valuable items including silver, gold, steel, components, and plasteel. Items will be delivered via drop pods to the target location.";
+            
+            var confirmDialog = new Dialog_MessageBox(
+                text: $"Spawn Gift Pods\n\n{description}\n\nContents: Valuable trade goods and materials",
+                title: "Spawn Gift Pods",
+                buttonAText: "Drop Pods",
+                buttonAAction: () => {
+                    SpawnGiftPods();
+                    // Auto-close window after confirmation
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                },
+                buttonBText: "Cancel",
+                buttonBAction: null
+            );
+            
+            Find.WindowStack.Add(confirmDialog);
+        }
+        
+        /// <summary>
+        /// Gets description for a pawn type
+        /// </summary>
+        private string GetPawnDescription(PawnKindDef pawnKind)
+        {
+            if (pawnKind.RaceProps.Humanlike)
+            {
+                return $"Human colonist with random traits, skills, and background. Can join your colony and perform all tasks.";
+            }
+            else if (pawnKind.RaceProps.Animal)
+            {
+                var tameable = "Tameable status unknown"; // Simplified for compatibility
+                var bodySize = pawnKind.RaceProps.baseBodySize < 0.5f ? "Small" : 
+                              pawnKind.RaceProps.baseBodySize < 1.5f ? "Medium" : "Large";
+                return $"Animal - {bodySize} sized. {tameable}.";
+            }
+            else if (pawnKind.RaceProps.IsMechanoid)
+            {
+                return $"Mechanoid unit. Hostile by default unless faction is set to friendly.";
+            }
+            else
+            {
+                return $"Special pawn type: {pawnKind.defName}";
+            }
+        }
+        
+        /// <summary>
+        /// Gets faction description for spawning
+        /// </summary>
+        private string GetFactionDescription()
+        {
+            switch (selectedSpawnFaction)
+            {
+                case SpawnFaction.JoinPlayer:
+                    return "Player faction (will join your colony)";
+                case SpawnFaction.Friendly:
+                    return "Friendly (will not attack your colonists)";
+                case SpawnFaction.Hostile:
+                    return "Hostile (will attack your colonists)";
+                default:
+                    return "Unknown faction";
             }
         }
     }
