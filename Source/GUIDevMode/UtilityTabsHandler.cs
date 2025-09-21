@@ -8,6 +8,27 @@ namespace GUIDevMode
 {
     public class UtilityTabsHandler
     {
+        // Static variables for plant growth area targeting
+        private static bool isTargetingPlantGrowth = false;
+        private static IntVec3 firstGrowthCorner = IntVec3.Invalid;
+        private static bool hasFirstGrowthCorner = false;
+        
+        // Public properties for external access
+        public static bool IsTargetingPlantGrowth => isTargetingPlantGrowth;
+        
+        /// <summary>
+        /// Clears plant growth targeting state
+        /// </summary>
+        public static void ClearPlantGrowthTargeting()
+        {
+            isTargetingPlantGrowth = false;
+            hasFirstGrowthCorner = false;
+            firstGrowthCorner = IntVec3.Invalid;
+            
+            // Stop the MapComponent preview
+            MapComponent_RadiusPreview.StopPlantGrowthPreview();
+        }
+        
         // Research tab data
         private Vector2 researchScrollPos = Vector2.zero;
         private string researchSearchText = "";
@@ -16,6 +37,7 @@ namespace GUIDevMode
         // Trading tab data
         private Vector2 tradingScrollPos = Vector2.zero;
         private bool spawnOrbitalTrader = true;
+        private string tradingSearchText = "";
         
         // Utilities tab data
         private Vector2 utilitiesScrollPos = Vector2.zero;
@@ -27,6 +49,7 @@ namespace GUIDevMode
         // Incidents tab data
         private Vector2 incidentsScrollPos = Vector2.zero;
         private bool showRaidIncidentsOnly = false;
+        private string incidentsSearchText = "";
         
         public void DrawResearchTab(Rect rect)
         {
@@ -113,43 +136,42 @@ namespace GUIDevMode
             listing.Label("Trading & Economy:");
             listing.Gap(5f);
             
-            listing.CheckboxLabeled("Spawn orbital traders (vs caravan)", ref spawnOrbitalTrader);
+            // Warning about caravan traders
+            GUI.color = Color.yellow;
+            listing.Label("⚠️ CARAVAN TRADERS DISABLED ⚠️");
+            listing.Label("Caravan traders disabled due to mod conflicts.");
+            listing.Label("Orbital traders are still available.");
+            listing.Gap(10f);
+            GUI.color = Color.white;
+            
+            // Orbital trader toggle (always true)
+            spawnOrbitalTrader = true;
+            listing.CheckboxLabeled("Spawn as Orbital Trader (Only Option)", ref spawnOrbitalTrader);
             listing.Gap(5f);
             
-            listing.Label("Economy Actions:");
-            if (listing.ButtonText("Add 1000 Silver"))
-                AddSilver(1000);
-            if (listing.ButtonText("Add 10000 Silver"))
-                AddSilver(10000);
-            if (listing.ButtonText("Add 1000 Components"))
-                AddComponents(1000);
-            if (listing.ButtonText("Add Random Trade Goods"))
-                AddRandomTradeGoods();
-            if (listing.ButtonText("Call Random Trader"))
-                CallRandomTrader();
-                
+            // Quick spawn buttons
+            listing.Label("Quick Actions:");
+            if (listing.ButtonText("Call Random Orbital Trader"))
+                CallRandomOrbitalTrader();
+            if (listing.ButtonText("Add 50 Components"))
+                AddComponents(50);
             listing.Gap(10f);
-            listing.Label("Available Traders (Click to Spawn):");
             
-            var currentY = listing.CurHeight;
             listing.End();
             
-            // Scrollable trader list - use absolute positioning
-            var scrollRect = new Rect(rect.x, rect.y + currentY, rect.width, rect.height - currentY);
-            var allTraders = DefDatabase<TraderKindDef>.AllDefs
-                .OrderBy(t => t.label)
-                .ToList();
-                
-            var contentHeight = allTraders.Count * 70f; // More height for details
+            // Trader list with scroll
+            var scrollRect = new Rect(rect.x, listing.CurHeight, rect.width, rect.height - listing.CurHeight);
+            var allTraders = DefDatabase<TraderKindDef>.AllDefs.Where(t => t != null).OrderBy(t => t.label).ToList();
+            var contentHeight = allTraders.Count * 60f;
             
             Widgets.BeginScrollView(scrollRect, ref tradingScrollPos, new Rect(0, 0, scrollRect.width - 16f, contentHeight));
             
             float y = 0f;
             foreach (var trader in allTraders)
             {
-                var traderRect = new Rect(0, y, scrollRect.width - 16f, 65f);
-                DrawTraderEntry(traderRect, trader);
-                y += 70f;
+                var traderRect = new Rect(0, y, scrollRect.width - 16f, 55f);
+                DrawOrbitalTraderEntry(traderRect, trader);
+                y += 60f;
             }
             
             Widgets.EndScrollView();
@@ -157,8 +179,15 @@ namespace GUIDevMode
         
         public void DrawUtilitiesTab(Rect rect)
         {
-            // Calculate content height for scrolling
-            float contentHeight = 600f; // Estimated height for all utility content
+            // Calculate actual content height based on number of buttons and sections
+            // Each button is ~30f, each gap is ~8f, each label is ~20f
+            // Map Actions: 1 label + 3 buttons + 1 gap = 20 + 90 + 8 = 118
+            // Dangerous Actions: 1 label + 2-3 buttons + 1 gap = 20 + 60-90 + 8 = 88-118
+            // Colony Utilities: 1 label + 6 buttons + 1 gap = 20 + 180 + 8 = 208
+            // Plant utilities: 1 label + 2 buttons + 1 gap = 20 + 60 + 8 = 88
+            // Aggressive actions: 1 label + 4 buttons = 20 + 120 = 140
+            // Total: approximately 642-672f, so let's use 800f to be safe
+            float contentHeight = 800f;
             
             var scrollRect = new Rect(rect.x, rect.y, rect.width, rect.height);
             Widgets.BeginScrollView(scrollRect, ref utilitiesScrollPos, new Rect(0, 0, scrollRect.width - 16f, contentHeight));
@@ -223,7 +252,7 @@ namespace GUIDevMode
             listing.Label("Plant & Agriculture:");
             if (listing.ButtonText("Grow All Plants (Full Map)"))
                 GrowAllPlantsOnMap();
-            if (listing.ButtonText("Grow Plants in Area (Select Zone)"))
+            if (listing.ButtonText("Grow Plants in Zone (Select Area)"))
                 StartAreaPlantGrowth();
                 
             listing.Gap(8f);
@@ -234,6 +263,8 @@ namespace GUIDevMode
                 StartBerserkTargeting();
             if (listing.ButtonText("Make Animal Attack Everything (Select Target)"))
                 StartAnimalAttackTargeting();
+            if (listing.ButtonText("Create Animal Manhunt (All Map Animals)"))
+                StartAnimalManhunt();
             if (listing.ButtonText("Target Colonist Hunger (Select Target)"))
                 StartHungerTargeting();
                 
@@ -246,6 +277,8 @@ namespace GUIDevMode
             var listing = new Listing_Standard();
             listing.Begin(rect);
             
+            // Add extra gap at top to prevent covering tab above
+            listing.Gap(15f);
             listing.Label("Faction Relations Manager:");
             listing.Gap(5f);
             listing.End();
@@ -276,6 +309,15 @@ namespace GUIDevMode
             listing.Gap(5f);
             
             listing.CheckboxLabeled("Show raid incidents only", ref showRaidIncidentsOnly);
+            listing.Gap(5f);
+            
+            // Search field for incidents
+            listing.Label("Search incidents:");
+            var newIncidentsSearchText = listing.TextEntry(incidentsSearchText);
+            if (newIncidentsSearchText != incidentsSearchText)
+            {
+                incidentsSearchText = newIncidentsSearchText;
+            }
             listing.Gap(10f); // More space to prevent overlap
             
             var currentY = listing.CurHeight;
@@ -284,7 +326,22 @@ namespace GUIDevMode
             // Ensure proper spacing by using absolute positioning
             var scrollRect = new Rect(rect.x, rect.y + currentY, rect.width, rect.height - currentY);
             var incidents = DefDatabase<IncidentDef>.AllDefs
-                .Where(inc => !showRaidIncidentsOnly || inc.category == IncidentCategoryDefOf.ThreatBig)
+                .Where(inc => {
+                    // Apply raid filter
+                    if (showRaidIncidentsOnly && inc.category != IncidentCategoryDefOf.ThreatBig)
+                        return false;
+                    
+                    // Apply search filter
+                    if (!string.IsNullOrEmpty(incidentsSearchText))
+                    {
+                        var searchTerm = incidentsSearchText.ToLower();
+                        return (inc.label?.ToLower().Contains(searchTerm) ?? false) ||
+                               inc.defName.ToLower().Contains(searchTerm) ||
+                               (inc.category?.label?.ToLower().Contains(searchTerm) ?? false);
+                    }
+                    
+                    return true;
+                })
                 .OrderBy(inc => inc.category.label)
                 .ThenBy(inc => inc.label);
                 
@@ -331,6 +388,30 @@ namespace GUIDevMode
             Widgets.Label(rect.RightPart(0.3f), statusText);
         }
         
+        private void DrawOrbitalTraderEntry(Rect rect, TraderKindDef trader)
+        {
+            Widgets.DrawMenuSection(rect);
+            var innerRect = rect.ContractedBy(3);
+            
+            var nameRect = new Rect(innerRect.x, innerRect.y, innerRect.width * 0.75f, 25f);
+            var buttonRect = new Rect(innerRect.x + innerRect.width * 0.75f, innerRect.y, innerRect.width * 0.25f, 25f);
+            
+            Widgets.Label(nameRect, trader.label + " (Orbital)");
+            if (Widgets.ButtonText(buttonRect, "Spawn"))
+            {
+                SpawnOrbitalTrader(trader);
+            }
+            
+            // Details about what they sell/buy
+            var detailsRect = new Rect(innerRect.x, innerRect.y + 28f, innerRect.width, 30f);
+            var details = GetTraderDetails(trader);
+            GUI.color = Color.gray;
+            Text.Font = GameFont.Tiny;
+            Widgets.Label(detailsRect, details);
+            Text.Font = GameFont.Small;
+            GUI.color = Color.white;
+        }
+
         private void DrawTraderEntry(Rect rect, TraderKindDef trader)
         {
             Widgets.DrawMenuSection(rect);
@@ -516,6 +597,68 @@ namespace GUIDevMode
             Find.ResearchManager.FinishProject(research);
         }
         
+        private void SpawnOrbitalTrader(TraderKindDef traderKind)
+        {
+            try
+            {
+                if (Find.CurrentMap == null)
+                {
+                    Messages.Message("No active map to spawn trader", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
+                if (traderKind == null)
+                {
+                    Messages.Message("Invalid trader kind", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
+                // Use safer orbital trader spawning only
+                try
+                {
+                    var parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, Find.CurrentMap);
+                    parms.target = Find.CurrentMap;
+                    parms.traderKind = traderKind;
+                    parms.forced = true; // Force spawn in dev mode
+                    
+                    var incident = IncidentDefOf.OrbitalTraderArrival;
+                    if (incident?.Worker != null && incident.Worker.CanFireNow(parms))
+                    {
+                        incident.Worker.TryExecute(parms);
+                        Messages.Message($"Orbital {traderKind.label} trader called", MessageTypeDefOf.PositiveEvent);
+                    }
+                    else
+                    {
+                        Messages.Message("Cannot spawn orbital trader right now - try again later", MessageTypeDefOf.RejectInput);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Warning($"[GUI Dev Mode] Orbital trader failed: {ex.Message}");
+                    Messages.Message("Orbital trader spawning failed", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"[GUI Dev Mode] Critical error spawning orbital trader {traderKind?.defName}: {ex.Message}");
+                Messages.Message("Critical trader spawning error - check logs", MessageTypeDefOf.RejectInput);
+            }
+        }
+        
+        private void CallRandomOrbitalTrader()
+        {
+            var allTraders = DefDatabase<TraderKindDef>.AllDefs.ToList();
+            if (allTraders.Any())
+            {
+                var randomTrader = allTraders.RandomElement();
+                SpawnOrbitalTrader(randomTrader);
+            }
+            else
+            {
+                Messages.Message("No traders available", MessageTypeDefOf.RejectInput);
+            }
+        }
+
         private void SpawnTrader(TraderKindDef traderKind)
         {
             try
@@ -526,47 +669,195 @@ namespace GUIDevMode
                     return;
                 }
                 
+                // Check for null or invalid trader kinds
+                if (traderKind == null)
+                {
+                    Messages.Message("Invalid trader kind", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
                 if (spawnOrbitalTrader)
                 {
-                    // Create proper incident parameters for orbital trader
-                    var parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, Find.CurrentMap);
-                    parms.target = Find.CurrentMap;
-                    parms.traderKind = traderKind;
-                    
-                    var incident = IncidentDefOf.OrbitalTraderArrival;
-                    if (incident.Worker.CanFireNow(parms))
+                    // Use safer orbital trader spawning
+                    try
                     {
-                        incident.Worker.TryExecute(parms);
-                        Messages.Message($"Orbital {traderKind.label} trader called", MessageTypeDefOf.PositiveEvent);
+                        var parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, Find.CurrentMap);
+                        parms.target = Find.CurrentMap;
+                        parms.traderKind = traderKind;
+                        
+                        // Additional safety checks for orbital traders
+                        var incident = IncidentDefOf.OrbitalTraderArrival;
+                        if (incident?.Worker != null && incident.Worker.CanFireNow(parms))
+                        {
+                            incident.Worker.TryExecute(parms);
+                            Messages.Message($"Orbital {traderKind.label} trader called", MessageTypeDefOf.PositiveEvent);
+                        }
+                        else
+                        {
+                            Messages.Message("Cannot spawn orbital trader right now - try again later", MessageTypeDefOf.RejectInput);
+                        }
                     }
-                    else
+                    catch (System.Exception ex)
                     {
-                        Messages.Message("Cannot spawn orbital trader right now", MessageTypeDefOf.RejectInput);
+                        Log.Warning($"[GUI Dev Mode] Orbital trader failed: {ex.Message}. Trying alternative method.");
+                        Messages.Message("Orbital trader spawning failed - traders may be disabled by other mods", MessageTypeDefOf.RejectInput);
                     }
                 }
                 else
                 {
-                    // Create proper incident parameters for caravan trader
-                    var parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, Find.CurrentMap);
-                    parms.target = Find.CurrentMap;
-                    parms.traderKind = traderKind;
-                    
-                    var incident = IncidentDefOf.TraderCaravanArrival;
-                    if (incident.Worker.CanFireNow(parms))
+                    // Use safer caravan trader spawning with better error handling
+                    try
                     {
-                        incident.Worker.TryExecute(parms);
-                        Messages.Message($"{traderKind.label} caravan called", MessageTypeDefOf.PositiveEvent);
+                        var parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, Find.CurrentMap);
+                        parms.target = Find.CurrentMap;
+                        parms.traderKind = traderKind;
+                        
+                        // For caravan traders, we need to ensure there's a valid faction
+                        FactionDef factionToUse = null;
+                        
+                        // First try the trader's preferred faction
+                        if (traderKind.faction != null)
+                        {
+                            factionToUse = traderKind.faction;
+                        }
+                        else
+                        {
+                            // Find any friendly or neutral faction that can trade
+                            var availableFactions = Find.FactionManager.AllFactions
+                                .Where(f => !f.IsPlayer && !f.HostileTo(Faction.OfPlayer) && f.def.humanlikeFaction)
+                                .ToList();
+                            
+                            if (availableFactions.Any())
+                            {
+                                parms.faction = availableFactions.RandomElement();
+                            }
+                            else
+                            {
+                                // Create a temporary trading faction if none exists
+                                var neutralFactions = DefDatabase<FactionDef>.AllDefs
+                                    .Where(f => f.humanlikeFaction && !f.isPlayer && !f.hidden)
+                                    .ToList();
+                                
+                                if (neutralFactions.Any())
+                                {
+                                    factionToUse = neutralFactions.RandomElement();
+                                }
+                            }
+                        }
+                        
+                        // Additional validation for caravan traders
+                        var incident = IncidentDefOf.TraderCaravanArrival;
+                        if (incident?.Worker != null)
+                        {
+                            // Force ignore cooldowns and restrictions for dev mode
+                            parms.forced = true;
+                            
+                            if (incident.Worker.CanFireNow(parms) || parms.forced)
+                            {
+                                var success = incident.Worker.TryExecute(parms);
+                                if (success)
+                                {
+                                    Messages.Message($"{traderKind.label} caravan called", MessageTypeDefOf.PositiveEvent);
+                                }
+                                else
+                                {
+                                    // Try alternative method - direct spawn
+                                    Log.Message($"[GUI Dev Mode] Standard caravan spawn failed, trying direct method for {traderKind.label}");
+                                    TryDirectCaravanSpawn(traderKind, parms.faction);
+                                }
+                            }
+                            else
+                            {
+                                // Try direct spawn anyway in dev mode
+                                Log.Message($"[GUI Dev Mode] CanFireNow failed for {traderKind.label}, trying direct spawn");
+                                TryDirectCaravanSpawn(traderKind, parms.faction);
+                            }
+                        }
+                        else
+                        {
+                            Messages.Message("Trader caravan incident worker not available", MessageTypeDefOf.RejectInput);
+                        }
                     }
-                    else
+                    catch (System.Exception ex)
                     {
-                        Messages.Message("Cannot spawn trader caravan right now", MessageTypeDefOf.RejectInput);
+                        Log.Warning($"[GUI Dev Mode] Caravan trader {traderKind.defName} failed: {ex.Message}. Trying direct spawn.");
+                        TryDirectCaravanSpawn(traderKind, null);
                     }
                 }
             }
             catch (System.Exception ex)
             {
-                Log.Error($"[GUI Dev Mode] Error spawning trader {traderKind?.defName}: {ex.Message}");
-                Messages.Message("Failed to spawn trader - check logs for details", MessageTypeDefOf.RejectInput);
+                Log.Error($"[GUI Dev Mode] Critical error spawning trader {traderKind?.defName}: {ex.Message}");
+                Messages.Message("Critical trader spawning error - check logs", MessageTypeDefOf.RejectInput);
+            }
+        }
+        
+        private void TryDirectCaravanSpawn(TraderKindDef traderKind, Faction faction = null)
+        {
+            try
+            {
+                // Get or create a suitable faction
+                if (faction == null)
+                {
+                    // Try to find existing non-hostile factions
+                    var availableFactions = Find.FactionManager.AllFactions
+                        .Where(f => !f.IsPlayer && !f.HostileTo(Faction.OfPlayer) && f.def.humanlikeFaction)
+                        .ToList();
+                    
+                    if (availableFactions.Any())
+                    {
+                        faction = availableFactions.RandomElement();
+                    }
+                    else
+                    {
+                        // Use any suitable faction def to create the trader
+                        var suitableFactionDefs = DefDatabase<FactionDef>.AllDefs
+                            .Where(f => f.humanlikeFaction && !f.isPlayer && !f.hidden)
+                            .ToList();
+                        
+                        if (suitableFactionDefs.Any())
+                        {
+                            // Find existing faction or create temporary reference
+                            var factionDef = suitableFactionDefs.RandomElement();
+                            faction = Find.FactionManager.AllFactions
+                                .FirstOrDefault(f => f.def == factionDef) ?? 
+                                Find.FactionManager.AllFactions
+                                .FirstOrDefault(f => !f.IsPlayer && !f.HostileTo(Faction.OfPlayer));
+                        }
+                    }
+                }
+                
+                if (faction != null)
+                {
+                    // Try to spawn caravan using incident system with forced parameters
+                    var incident = IncidentDefOf.TraderCaravanArrival;
+                    var parms = new IncidentParms();
+                    parms.target = Find.CurrentMap;
+                    parms.faction = faction;
+                    parms.traderKind = traderKind;
+                    parms.forced = true;
+                    
+                    // Bypass normal restrictions for dev mode
+                    var success = incident.Worker.TryExecute(parms);
+                    
+                    if (success)
+                    {
+                        Messages.Message($"{traderKind.label} caravan spawned (direct method)", MessageTypeDefOf.PositiveEvent);
+                    }
+                    else
+                    {
+                        Messages.Message($"Failed to spawn {traderKind.label} caravan - may be incompatible with current game state", MessageTypeDefOf.RejectInput);
+                    }
+                }
+                else
+                {
+                    Messages.Message("No suitable faction found for caravan trader", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"[GUI Dev Mode] Direct caravan spawn failed for {traderKind.defName}: {ex.Message}");
+                Messages.Message($"Direct caravan spawn failed for {traderKind.label}", MessageTypeDefOf.RejectInput);
             }
         }
         
@@ -948,39 +1239,206 @@ namespace GUIDevMode
         {
             if (Find.CurrentMap == null) return;
             
-            Messages.Message("Select two corners to define the growth area (first click = start, second click = end)", 
+            // Set static tracking variables
+            isTargetingPlantGrowth = true;
+            hasFirstGrowthCorner = false;
+            firstGrowthCorner = IntVec3.Invalid;
+            
+            // Start the MapComponent preview
+            MapComponent_RadiusPreview.StartPlantGrowthPreview();
+            
+            Messages.Message("Select area for plant growth: Click first corner, then second corner to define zone", 
                 MessageTypeDefOf.NeutralEvent);
             
             // Auto-close GUI when starting area selection
             Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
             
+            // Simplified targeting without drawing delegates - MapComponent handles rendering
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), firstCorner => {
                 if (firstCorner.IsValid)
                 {
-                    // Show visual feedback for first corner
-                    ShowAreaSelectionVisual(firstCorner.Cell, IntVec3.Invalid);
+                    firstGrowthCorner = firstCorner.Cell;
+                    hasFirstGrowthCorner = true;
+                    
+                    // Update MapComponent with first corner
+                    MapComponent_RadiusPreview.SetPlantGrowthFirstCorner(firstCorner.Cell);
+                    
+                    Messages.Message("First corner selected. Now click second corner to complete the zone.", 
+                        MessageTypeDefOf.NeutralEvent);
                     
                     Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), secondCorner => {
                         if (secondCorner.IsValid)
                         {
-                            // Show final area selection visual
-                            ShowAreaSelectionVisual(firstCorner.Cell, secondCorner.Cell);
                             GrowPlantsInArea(firstCorner.Cell, secondCorner.Cell);
                         }
                         else
                         {
-                            Messages.Message("Area plant growth cancelled", MessageTypeDefOf.NeutralEvent);
+                            Messages.Message("Plant growth zone selection cancelled", MessageTypeDefOf.NeutralEvent);
                         }
-                    }, null, delegate { 
-                        // Drawing delegate for area selection preview
-                        DrawAreaSelectionPreview(firstCorner.Cell);
+                        // Reset static variables when done
+                        ClearPlantGrowthTargeting();
                     });
                 }
                 else
                 {
-                    Messages.Message("Area plant growth cancelled", MessageTypeDefOf.NeutralEvent);
+                    // Reset static variables on cancel
+                    ClearPlantGrowthTargeting();
+                    Messages.Message("Plant growth zone selection cancelled", MessageTypeDefOf.NeutralEvent);
                 }
             });
+        }
+        
+        private void DrawAreaGrowthPreview(IntVec3 firstCorner)
+        {
+            var currentMouseCell = UI.MouseCell();
+            if (!currentMouseCell.InBounds(Find.CurrentMap))
+                return;
+            
+            // Calculate area bounds
+            var minX = Mathf.Min(firstCorner.x, currentMouseCell.x);
+            var maxX = Mathf.Max(firstCorner.x, currentMouseCell.x);
+            var minZ = Mathf.Min(firstCorner.z, currentMouseCell.z);
+            var maxZ = Mathf.Max(firstCorner.z, currentMouseCell.z);
+            
+            var areaCells = new List<IntVec3>();
+            var plantsToGrow = 0;
+            
+            // Build area cells list and count plants
+            for (int x = minX; x <= maxX; x++)
+            {
+                for (int z = minZ; z <= maxZ; z++)
+                {
+                    var cell = new IntVec3(x, 0, z);
+                    if (cell.InBounds(Find.CurrentMap))
+                    {
+                        areaCells.Add(cell);
+                        var plants = cell.GetThingList(Find.CurrentMap).OfType<Plant>();
+                        plantsToGrow += plants.Count(p => p.Growth < 1f);
+                    }
+                }
+            }
+            
+            // Draw area preview
+            if (areaCells.Any())
+            {
+                // Highlight the entire area
+                GenDraw.DrawFieldEdges(areaCells, Color.green);
+                
+                // Draw corner markers with different colors
+                GenDraw.DrawFieldEdges(new List<IntVec3> { firstCorner }, new Color(1f, 1f, 0f)); // Yellow
+                GenDraw.DrawFieldEdges(new List<IntVec3> { currentMouseCell }, Color.cyan);
+                
+                // Show area info
+                var mousePos = Event.current.mousePosition;
+                var infoText = $"Area: {areaCells.Count} cells, {plantsToGrow} plants to grow";
+                var labelRect = new Rect(mousePos.x + 10f, mousePos.y - 40f, 300f, 40f);
+                
+                GUI.color = Color.green;
+                Widgets.Label(labelRect, infoText);
+                GUI.color = Color.white;
+            }
+        }
+        
+        // Static method for continuous plant growth area preview drawing
+        public static void DrawPlantGrowthPreviewStatic()
+        {
+            // Check if targeting is actually active and clear state if not
+            if (isTargetingPlantGrowth && !Find.Targeter.IsTargeting)
+            {
+                ClearPlantGrowthTargeting();
+                return;
+            }
+            
+            if (!isTargetingPlantGrowth || Find.CurrentMap == null)
+                return;
+                
+            var currentMouseCell = UI.MouseCell();
+            if (!currentMouseCell.InBounds(Find.CurrentMap))
+                return;
+            
+            if (!hasFirstGrowthCorner)
+            {
+                // First corner selection - highlight current cell like vanilla zone designation
+                var cells = new List<IntVec3> { currentMouseCell };
+                
+                // Use more visible highlighting like vanilla zone designation
+                GenDraw.DrawFieldEdges(cells, Color.green, null);
+                
+                // Add additional visual feedback with filled area
+                Vector3 drawPos = currentMouseCell.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                Graphics.DrawMesh(MeshPool.plane10, drawPos, Quaternion.identity, 
+                    MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.Transparent, 
+                    new Color(0f, 1f, 0f, 0.3f)), 0);
+                
+                // Show info text
+                var mousePos = Event.current.mousePosition;
+                var labelRect = new Rect(mousePos.x + 10f, mousePos.y - 20f, 200f, 20f);
+                GUI.color = Color.green;
+                Widgets.Label(labelRect, "Click to select first corner");
+                GUI.color = Color.white;
+            }
+            else
+            {
+                // Second corner selection - show area preview
+                var minX = Mathf.Min(firstGrowthCorner.x, currentMouseCell.x);
+                var maxX = Mathf.Max(firstGrowthCorner.x, currentMouseCell.x);
+                var minZ = Mathf.Min(firstGrowthCorner.z, currentMouseCell.z);
+                var maxZ = Mathf.Max(firstGrowthCorner.z, currentMouseCell.z);
+                
+                var areaCells = new List<IntVec3>();
+                var plantsToGrow = 0;
+                
+                // Build area cells list and count plants
+                for (int x = minX; x <= maxX; x++)
+                {
+                    for (int z = minZ; z <= maxZ; z++)
+                    {
+                        var cell = new IntVec3(x, 0, z);
+                        if (cell.InBounds(Find.CurrentMap))
+                        {
+                            areaCells.Add(cell);
+                            var plants = cell.GetThingList(Find.CurrentMap).OfType<Plant>();
+                            plantsToGrow += plants.Count(p => p.Growth < 1f);
+                        }
+                    }
+                }
+                
+                // Draw area preview like vanilla zone designation
+                if (areaCells.Any())
+                {
+                    // Use vanilla-style zone highlighting
+                    GenDraw.DrawFieldEdges(areaCells, Color.green, null);
+                    
+                    // Add filled area visualization like vanilla growing zones
+                    foreach (var cell in areaCells)
+                    {
+                        Vector3 drawPos = cell.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                        Graphics.DrawMesh(MeshPool.plane10, drawPos, Quaternion.identity, 
+                            MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.Transparent, 
+                            new Color(0f, 1f, 0f, 0.2f)), 0);
+                    }
+                    
+                    // Draw corner markers with different colors
+                    Vector3 firstCornerPos = firstGrowthCorner.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                    Graphics.DrawMesh(MeshPool.plane10, firstCornerPos, Quaternion.identity, 
+                        MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.Transparent, 
+                        new Color(1f, 1f, 0f, 0.8f)), 0); // Yellow for first corner
+                        
+                    Vector3 currentCornerPos = currentMouseCell.ToVector3ShiftedWithAltitude(AltitudeLayer.MetaOverlays);
+                    Graphics.DrawMesh(MeshPool.plane10, currentCornerPos, Quaternion.identity, 
+                        MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.Transparent, 
+                        new Color(0f, 1f, 1f, 0.8f)), 0); // Cyan for current corner
+                    
+                    // Show area info
+                    var mousePos = Event.current.mousePosition;
+                    var infoText = $"Area: {areaCells.Count} cells, {plantsToGrow} plants to grow";
+                    var labelRect = new Rect(mousePos.x + 10f, mousePos.y - 40f, 300f, 40f);
+                    
+                    GUI.color = Color.green;
+                    Widgets.Label(labelRect, infoText);
+                    GUI.color = Color.white;
+                }
+            }
         }
         
         private void GrowPlantsInArea(IntVec3 corner1, IntVec3 corner2)
@@ -1065,8 +1523,22 @@ namespace GUIDevMode
         {
             if (pawn?.health?.hediffSet == null) return;
             
-            // Find berserk hediff def by string
-            var berserkDef = DefDatabase<HediffDef>.GetNamedSilentFail("Berserk");
+            // Try multiple possible berserk hediff names for different RimWorld versions
+            string[] possibleBerserkNames = { 
+                "Berserk", 
+                "BerserkRage", 
+                "MentalState_Berserk", 
+                "Beserk",  // typo in some mods
+                "BerserkMentalState" 
+            };
+            
+            HediffDef berserkDef = null;
+            foreach (var name in possibleBerserkNames)
+            {
+                berserkDef = DefDatabase<HediffDef>.GetNamedSilentFail(name);
+                if (berserkDef != null) break;
+            }
+            
             if (berserkDef != null)
             {
                 var berserkHediff = HediffMaker.MakeHediff(berserkDef, pawn);
@@ -1075,17 +1547,122 @@ namespace GUIDevMode
             }
             else
             {
-                Messages.Message("Berserk hediff not found!", MessageTypeDefOf.RejectInput);
+                // Try using mental state instead of hediff
+                try
+                {
+                    var mentalStateDef = DefDatabase<MentalStateDef>.GetNamedSilentFail("Berserk");
+                    if (mentalStateDef == null)
+                        mentalStateDef = DefDatabase<MentalStateDef>.GetNamedSilentFail("MentalState_Berserk");
+                    
+                    if (mentalStateDef != null && pawn.mindState != null)
+                    {
+                        pawn.mindState.mentalStateHandler.TryStartMentalState(mentalStateDef, null, true);
+                        Messages.Message($"{pawn.Name.ToStringShort} has been made berserk!", MessageTypeDefOf.NegativeEvent);
+                    }
+                    else
+                    {
+                        Messages.Message("Could not find berserk hediff or mental state. Check console for available options.", MessageTypeDefOf.RejectInput);
+                        
+                        // Debug: List available hediff and mental state defs
+                        Log.Message("[GUI Dev Mode] Available HediffDefs containing 'berserk':");
+                        foreach (var hediff in DefDatabase<HediffDef>.AllDefsListForReading)
+                        {
+                            if (hediff.defName.ToLower().Contains("berserk") || hediff.label.ToLower().Contains("berserk"))
+                            {
+                                Log.Message($"  - {hediff.defName} (label: {hediff.label})");
+                            }
+                        }
+                        
+                        Log.Message("[GUI Dev Mode] Available MentalStateDefs containing 'berserk':");
+                        foreach (var mental in DefDatabase<MentalStateDef>.AllDefsListForReading)
+                        {
+                            if (mental.defName.ToLower().Contains("berserk") || mental.label.ToLower().Contains("berserk"))
+                            {
+                                Log.Message($"  - {mental.defName} (label: {mental.label})");
+                            }
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error($"[GUI Dev Mode] Error trying to make pawn berserk: {ex.Message}");
+                    Messages.Message("Error making pawn berserk - check console for details", MessageTypeDefOf.RejectInput);
+                }
             }
         }
         
         private void MakeAnimalAttackEverything(Pawn animal)
         {
-            if (animal?.mindState == null) return;
+            if (animal == null)
+            {
+                Log.Warning("[GUI Dev Mode] MakeAnimalAttackEverything called with null animal");
+                return;
+            }
             
-            animal.mindState.mentalStateHandler.TryStartMentalState(MentalStateDefOf.Manhunter);
+            if (animal.mindState?.mentalStateHandler == null)
+            {
+                Log.Warning($"[GUI Dev Mode] Animal {animal.def?.label ?? "Unknown"} has no mental state handler");
+                return;
+            }
             
-            Messages.Message($"{animal.Name.ToStringShort} is now attacking everything!", MessageTypeDefOf.NegativeEvent);
+            try
+            {
+                var success = animal.mindState.mentalStateHandler.TryStartMentalState(MentalStateDefOf.Manhunter);
+                
+                string animalName = "Unknown animal";
+                try
+                {
+                    animalName = animal.Name?.ToStringShort ?? animal.def?.label ?? animal.LabelShort ?? "Unknown animal";
+                }
+                catch
+                {
+                    animalName = "Unknown animal";
+                }
+                
+                if (success)
+                {
+                    Messages.Message($"{animalName} is now attacking everything!", MessageTypeDefOf.NegativeEvent);
+                }
+                else
+                {
+                    Messages.Message($"Failed to make {animalName} attack everything - already in mental state", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"[GUI Dev Mode] Failed to make animal attack everything: {ex.Message}\nStack trace: {ex.StackTrace}");
+                Messages.Message("Failed to make animal attack - critical error", MessageTypeDefOf.RejectInput);
+            }
+        }
+        
+        private void StartAnimalManhunt()
+        {
+            if (Find.CurrentMap == null) return;
+            
+            var animals = Find.CurrentMap.mapPawns.AllPawns
+                .Where(p => p.RaceProps.Animal && !p.Dead && p.Spawned)
+                .ToList();
+            
+            if (animals.Count == 0)
+            {
+                Messages.Message("No animals found on map", MessageTypeDefOf.NeutralEvent);
+                return;
+            }
+            
+            int manhuntCount = 0;
+            foreach (var animal in animals)
+            {
+                if (animal?.mindState?.mentalStateHandler != null && 
+                    animal.mindState.mentalStateHandler.TryStartMentalState(MentalStateDefOf.Manhunter))
+                {
+                    manhuntCount++;
+                }
+            }
+            
+            Messages.Message($"{manhuntCount} animals are now manhunting!", MessageTypeDefOf.ThreatBig);
+            
+            // Auto-close GUI after action
+            Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
         }
         
         /// <summary>
@@ -1206,16 +1783,37 @@ namespace GUIDevMode
         {
             if (Find.CurrentMap == null) return;
             
-            Messages.Message("Left-click on a colonist to adjust their hunger level, right-click to cancel", 
+            Messages.Message("Left-click on any pawn/animal (player, NPC, wild, tame) to adjust their hunger level, right-click to cancel", 
                 MessageTypeDefOf.NeutralEvent);
             
             // Auto-close GUI when starting targeting
             Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
             
-            Find.Targeter.BeginTargeting(TargetingParameters.ForThing(), target => {
-                if (target.IsValid && target.Thing is Pawn pawn && pawn.RaceProps.Humanlike)
+            // Create targeting parameters that allow targeting any pawn
+            var targetParams = new TargetingParameters
+            {
+                canTargetPawns = true,
+                canTargetBuildings = false,
+                canTargetItems = false,
+                validator = (TargetInfo target) => 
                 {
-                    ShowHungerMenu(pawn);
+                    return target.HasThing && target.Thing is Pawn pawn && 
+                           pawn.needs?.food != null && !pawn.Dead && pawn.Spawned;
+                }
+            };
+            
+            Find.Targeter.BeginTargeting(targetParams, target => {
+                if (target.IsValid && target.Thing is Pawn pawn)
+                {
+                    if (pawn.needs?.food != null)
+                    {
+                        ShowHungerMenu(pawn);
+                    }
+                    else
+                    {
+                        string pawnName = pawn.Name?.ToStringShort ?? pawn.def?.label ?? "Unknown";
+                        Messages.Message($"{pawnName} does not have hunger needs", MessageTypeDefOf.RejectInput);
+                    }
                 }
                 else
                 {
@@ -1229,71 +1827,170 @@ namespace GUIDevMode
         /// </summary>
         private void ShowHungerMenu(Pawn pawn)
         {
-            if (pawn?.needs?.food == null) return;
+            if (pawn?.needs?.food == null) 
+            {
+                Messages.Message("Invalid pawn or pawn has no food need", MessageTypeDefOf.RejectInput);
+                return;
+            }
+            
+            // Ensure pawn has a valid name
+            string pawnName = "Unknown";
+            try
+            {
+                pawnName = pawn.Name?.ToStringShort ?? pawn.LabelShort ?? "Unknown Pawn";
+            }
+            catch (System.Exception ex)
+            {
+                Log.Warning($"[GUI Dev Mode] Error getting pawn name: {ex.Message}");
+                pawnName = "Unknown Pawn";
+            }
             
             var options = new List<FloatMenuOption>();
             
-            // Add hunger level options
+            // Add hunger level options with proper null checking
             options.Add(new FloatMenuOption("Set to Famished (0%)", () => {
-                pawn.needs.food.CurLevel = 0f;
-                Messages.Message($"{pawn.Name.ToStringShort} is now famished", MessageTypeDefOf.NegativeEvent);
+                try
+                {
+                    if (pawn?.needs?.food != null)
+                    {
+                        pawn.needs.food.CurLevel = 0f;
+                        Messages.Message($"{pawnName} is now famished", MessageTypeDefOf.NegativeEvent);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error($"[GUI Dev Mode] Error setting hunger to famished: {ex.Message}");
+                }
             }));
             
             options.Add(new FloatMenuOption("Set to Hungry (25%)", () => {
-                pawn.needs.food.CurLevel = 0.25f;
-                Messages.Message($"{pawn.Name.ToStringShort} is now hungry", MessageTypeDefOf.NeutralEvent);
+                try
+                {
+                    if (pawn?.needs?.food != null)
+                    {
+                        pawn.needs.food.CurLevel = 0.25f;
+                        Messages.Message($"{pawnName} is now hungry", MessageTypeDefOf.NeutralEvent);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error($"[GUI Dev Mode] Error setting hunger to hungry: {ex.Message}");
+                }
             }));
             
             options.Add(new FloatMenuOption("Set to Satisfied (75%)", () => {
-                pawn.needs.food.CurLevel = 0.75f;
-                Messages.Message($"{pawn.Name.ToStringShort} is now satisfied", MessageTypeDefOf.PositiveEvent);
+                try
+                {
+                    if (pawn?.needs?.food != null)
+                    {
+                        pawn.needs.food.CurLevel = 0.75f;
+                        Messages.Message($"{pawnName} is now satisfied", MessageTypeDefOf.PositiveEvent);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error($"[GUI Dev Mode] Error setting hunger to satisfied: {ex.Message}");
+                }
             }));
             
             options.Add(new FloatMenuOption("Set to Full (100%)", () => {
-                pawn.needs.food.CurLevel = 1f;
-                Messages.Message($"{pawn.Name.ToStringShort} is now completely full", MessageTypeDefOf.PositiveEvent);
+                try
+                {
+                    if (pawn?.needs?.food != null)
+                    {
+                        pawn.needs.food.CurLevel = 1f;
+                        Messages.Message($"{pawnName} is now completely full", MessageTypeDefOf.PositiveEvent);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Error($"[GUI Dev Mode] Error setting hunger to full: {ex.Message}");
+                }
             }));
             
-            // Add other needs manipulation
+            // Add other needs manipulation with null checking
             options.Add(new FloatMenuOption("--- Other Needs ---", null));
             
-            if (pawn.needs.mood != null)
+            if (pawn?.needs?.mood != null)
             {
                 options.Add(new FloatMenuOption("Set Mood to Happy", () => {
-                    pawn.needs.mood.CurLevel = 1f;
-                    Messages.Message($"{pawn.Name.ToStringShort} is now very happy", MessageTypeDefOf.PositiveEvent);
+                    try
+                    {
+                        pawn.needs.mood.CurLevel = 1f;
+                        Messages.Message($"{pawnName} is now very happy", MessageTypeDefOf.PositiveEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"[GUI Dev Mode] Error setting mood to happy: {ex.Message}");
+                    }
                 }));
                 
                 options.Add(new FloatMenuOption("Set Mood to Sad", () => {
-                    pawn.needs.mood.CurLevel = 0.1f;
-                    Messages.Message($"{pawn.Name.ToStringShort} is now very sad", MessageTypeDefOf.NegativeEvent);
+                    try
+                    {
+                        pawn.needs.mood.CurLevel = 0.1f;
+                        Messages.Message($"{pawnName} is now very sad", MessageTypeDefOf.NegativeEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"[GUI Dev Mode] Error setting mood to sad: {ex.Message}");
+                    }
                 }));
             }
             
-            if (pawn.needs.rest != null)
+            if (pawn?.needs?.rest != null)
             {
                 options.Add(new FloatMenuOption("Set Rest to Rested", () => {
-                    pawn.needs.rest.CurLevel = 1f;
-                    Messages.Message($"{pawn.Name.ToStringShort} is now fully rested", MessageTypeDefOf.PositiveEvent);
+                    try
+                    {
+                        pawn.needs.rest.CurLevel = 1f;
+                        Messages.Message($"{pawnName} is now fully rested", MessageTypeDefOf.PositiveEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"[GUI Dev Mode] Error setting rest to rested: {ex.Message}");
+                    }
                 }));
                 
                 options.Add(new FloatMenuOption("Set Rest to Exhausted", () => {
-                    pawn.needs.rest.CurLevel = 0f;
-                    Messages.Message($"{pawn.Name.ToStringShort} is now exhausted", MessageTypeDefOf.NegativeEvent);
+                    try
+                    {
+                        pawn.needs.rest.CurLevel = 0f;
+                        Messages.Message($"{pawnName} is now exhausted", MessageTypeDefOf.NegativeEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"[GUI Dev Mode] Error setting rest to exhausted: {ex.Message}");
+                    }
                 }));
             }
             
-            if (pawn.needs.joy != null)
+            if (pawn?.needs?.joy != null)
             {
                 options.Add(new FloatMenuOption("Set Recreation to Full", () => {
-                    pawn.needs.joy.CurLevel = 1f;
-                    Messages.Message($"{pawn.Name.ToStringShort} is now fully entertained", MessageTypeDefOf.PositiveEvent);
+                    try
+                    {
+                        pawn.needs.joy.CurLevel = 1f;
+                        Messages.Message($"{pawnName} is now fully entertained", MessageTypeDefOf.PositiveEvent);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.Error($"[GUI Dev Mode] Error setting recreation to full: {ex.Message}");
+                    }
                 }));
             }
             
             options.Add(new FloatMenuOption("Cancel", null));
             
-            Find.WindowStack.Add(new FloatMenu(options));
+            try
+            {
+                Find.WindowStack.Add(new FloatMenu(options));
+            }
+            catch (System.Exception ex)
+            {
+                Log.Error($"[GUI Dev Mode] Error creating float menu: {ex.Message}");
+                Messages.Message("Error creating hunger menu - check console for details", MessageTypeDefOf.RejectInput);
+            }
         }
     }
 }

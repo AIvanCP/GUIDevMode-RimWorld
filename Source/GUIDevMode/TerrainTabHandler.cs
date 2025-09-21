@@ -12,6 +12,7 @@ namespace GUIDevMode
         private string terrainSearchFilter = "";
         private TerrainDef selectedTerrain = null;
         private Dictionary<string, bool> categoryExpanded = new Dictionary<string, bool>();
+        private bool isPlacingTerrain = false;
         
         public void DrawTerrainTab(Rect rect)
         {
@@ -124,7 +125,7 @@ namespace GUIDevMode
                     if (Widgets.ButtonText(terrainRect, labelText, false))
                     {
                         selectedTerrain = terrain;
-                        ShowTerrainConfirmation(terrain);
+                        // Just select the terrain - user will click Place button to start placement
                     }
                     
                     y += 25f;
@@ -200,11 +201,11 @@ namespace GUIDevMode
                     listing.Gap(4f);
                 }
                 
-                listing.Label($"Mod: {selectedTerrain.modContentPack?.Name ?? "Core"}");
                 listing.Label($"Buildable: {(selectedTerrain.BuildableByPlayer ? "Yes" : "No")}");
                 listing.Label($"Natural: {(selectedTerrain.natural ? "Yes" : "No")}");
                 listing.Label($"Beauty: {selectedTerrain.GetStatValueAbstract(StatDefOf.Beauty):F1}");
                 listing.Label($"Walk Speed: {selectedTerrain.GetStatValueAbstract(StatDefOf.MoveSpeed):F2}x");
+                // Mod info removed - handled by other mods
                 
                 if (selectedTerrain.costList?.Any() == true)
                 {
@@ -215,30 +216,47 @@ namespace GUIDevMode
                         listing.Label($"  {cost.thingDef.label}: {cost.count}");
                     }
                 }
+                
+                listing.Gap(12f);
+                
+                // Confirm button in bottom right area
+                var buttonRect = listing.GetRect(35f);
+                if (!isPlacingTerrain)
+                {
+                    if (Widgets.ButtonText(buttonRect, $"Place {selectedTerrain.label}"))
+                    {
+                        StartContinuousTerrainPlacement(selectedTerrain);
+                        // Auto-close GUI immediately when starting placement
+                        Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                    }
+                }
+                else
+                {
+                    GUI.color = Color.yellow;
+                    Widgets.ButtonText(buttonRect, "Placing... (Right-click to stop)");
+                    GUI.color = Color.white;
+                }
             }
             
-            listing.Gap(12f);
-            listing.Label("Instructions:");
-            listing.Label("• Click terrain to start continuous placement");
-            listing.Label("• Right-click to stop placement");
-            listing.Label("• Terrain replaces existing ground");
+            if (!isPlacingTerrain)
+            {
+                listing.Gap(12f);
+                listing.Label("Instructions:");
+                listing.Label("• Select terrain and click 'Place' button");
+                listing.Label("• Place multiple in continuous mode");
+                listing.Label("• Right-click to stop placement");
+            }
             
             listing.End();
         }
         
-        private void ShowTerrainConfirmation(TerrainDef terrain)
+        private void StartContinuousTerrainPlacement(TerrainDef terrain)
         {
-            var description = terrain.description ?? "No description available.";
-            var title = $"Place {terrain.label?.CapitalizeFirst() ?? terrain.defName}?";
-            
-            var confirmText = $"{description}\n\nClick 'Place' to select location, or 'Cancel' to return.";
-            
-            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(confirmText, () => {
-                StartTerrainPlacement(terrain);
-            }, destructive: false, title: title));
+            isPlacingTerrain = true;
+            ContinuousTerrainPlacement(terrain);
         }
         
-        private void StartTerrainPlacement(TerrainDef terrain)
+        private void ContinuousTerrainPlacement(TerrainDef terrain)
         {
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                 if (target.IsValid)
@@ -246,12 +264,29 @@ namespace GUIDevMode
                     Find.CurrentMap.terrainGrid.SetTerrain(target.Cell, terrain);
                     Messages.Message($"Placed {terrain.label}", MessageTypeDefOf.NeutralEvent, false);
                     
-                    // Close the GUI after placement
-                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                    // Continue placement for next terrain
+                    ContinuousTerrainPlacement(terrain);
                 }
                 else
                 {
-                    Messages.Message("Terrain placement cancelled", MessageTypeDefOf.NeutralEvent);
+                    // Right-click cancellation
+                    isPlacingTerrain = false;
+                    Messages.Message("Terrain placement stopped", MessageTypeDefOf.NeutralEvent);
+                    
+                    // Auto-close GUI after stopping
+                    Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+                }
+            }, null, delegate {
+                // Preview delegate - show terrain info at mouse
+                var cell = UI.MouseCell();
+                if (cell.InBounds(Find.CurrentMap))
+                {
+                    var previewText = $"Place: {terrain.label}";
+                    var mousePos = Event.current.mousePosition;
+                    var labelRect = new Rect(mousePos.x + 10f, mousePos.y - 20f, 150f, 20f);
+                    GUI.color = Color.yellow;
+                    Widgets.Label(labelRect, previewText);
+                    GUI.color = Color.white;
                 }
             });
         }

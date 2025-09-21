@@ -276,16 +276,6 @@ namespace GUIDevMode
                 }
             }
             
-            // Status display
-            if (ExplosionSystem.ExplosionTargetingActive)
-            {
-                listing.Gap(4f);
-                var statusRect = listing.GetRect(20f);
-                GUI.color = Color.yellow;
-                Widgets.Label(statusRect, "Explosion targeting active - Right-click to cancel");
-                GUI.color = Color.white;
-            }
-            
             // Refresh explosions button
             listing.Gap(8f);
             var refreshRect = listing.GetRect(30f);

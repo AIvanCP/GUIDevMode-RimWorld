@@ -22,6 +22,20 @@ namespace GUIDevMode
         public static bool ExplosionTargetingActive => explosionTargetingActive;
         
         /// <summary>
+        /// Clears explosion targeting state - use when canceling targeting
+        /// </summary>
+        public static void ClearExplosionTargeting()
+        {
+            explosionTargetingActive = false;
+            isTargetingExplosion = false;
+            currentExplosionType = null;
+            currentExplosionRadius = 0f;
+            
+            // Stop the MapComponent preview
+            MapComponent_RadiusPreview.StopExplosionPreview();
+        }
+        
+        /// <summary>
         /// Validates that a damage type is suitable for explosion targeting
         /// </summary>
         public static bool IsValidExplosionType(DamageDef damageDef)
@@ -390,19 +404,12 @@ namespace GUIDevMode
             isTargetingExplosion = true;
             explosionTargetingActive = true;
             
-            ContinuousExplosionTargeting(damageDef, radius, isCustom, damageAmount);
-        }
-        
-        private static void ContinuousExplosionTargeting(DamageDef damageDef, float radius, bool isCustom = false, float damageAmount = 100f)
-        {
-            // Set up explosion preview state for continuous targeting
-            currentExplosionType = damageDef;
-            currentExplosionRadius = radius;
-            explosionPreviewColor = GetExplosionColor();
-            explosionPreviewColor.a = 0.35f; // Semi-transparent
-            isTargetingExplosion = true;
-            explosionTargetingActive = true;
+            // Start continuous preview via MapComponent
+            MapComponent_RadiusPreview.StartExplosionPreview(damageDef, radius, explosionPreviewColor);
             
+            Messages.Message($"Targeting {damageDef.label} explosion (radius: {radius:F1}) - Right-click to cancel", MessageTypeDefOf.NeutralEvent);
+            
+            // Use simplified BeginTargeting with proper cancel handling
             Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
                 if (target.IsValid)
                 {
@@ -415,111 +422,25 @@ namespace GUIDevMode
                     {
                         GenExplosion.DoExplosion(target.Cell, Find.CurrentMap, radius, damageDef, null, 
                             Mathf.RoundToInt(damageAmount));
-                        Messages.Message($"{damageDef.label} explosion (radius {radius:F1}, damage {damageAmount:F0})", 
-                            MessageTypeDefOf.NeutralEvent);
                     }
                     else
                     {
                         GenExplosion.DoExplosion(target.Cell, Find.CurrentMap, radius, damageDef, null);
-                        Messages.Message($"{damageDef.label} explosion (radius {radius:F1})", 
-                            MessageTypeDefOf.NeutralEvent);
                     }
                     
-                    // Continue targeting for more explosions
-                    ContinuousExplosionTargeting(damageDef, radius, isCustom, damageAmount);
+                    // Continue targeting for more explosions - restart targeting immediately
+                    StartExplosionTargeting(damageDef, radius, isCustom, damageAmount);
                 }
                 else
                 {
                     // Stop targeting if invalid target (right-click cancel)
-                    explosionTargetingActive = false;
-                    isTargetingExplosion = false;
+                    ClearExplosionTargeting();
                     Messages.Message("Explosion targeting stopped", MessageTypeDefOf.NeutralEvent);
                 }
-            }, null, delegate { 
-                // Drawing delegate - called every frame during targeting
-                DrawExplosionRadiusPreviewStatic();
             });
         }
         
-        public static void DrawExplosionRadiusPreviewStatic()
-        {
-            if (!explosionTargetingActive || !isTargetingExplosion || currentExplosionType == null)
-            {
-                return;
-            }
-                
-            var cell = UI.MouseCell();
-            if (!cell.InBounds(Find.CurrentMap))
-                return;
-
-            // Use the stored explosion preview color
-            var color = explosionPreviewColor;
-            
-            // Draw main explosion radius ring (like CF_ExplosiveRadius mod)
-            GenDraw.DrawRadiusRing(cell, currentExplosionRadius, Color.yellow);
-            
-            // Draw inner damage ring at 75% radius
-            var innerRadius = currentExplosionRadius * 0.75f;
-            if (innerRadius > 0.5f)
-            {
-                var innerColor = Color.red;
-                innerColor.a = 0.6f;
-                GenDraw.DrawRadiusRing(cell, innerRadius, innerColor);
-            }
-            
-            // Draw outer effect ring at 125% radius for area effects
-            var outerRadius = currentExplosionRadius * 1.25f;
-            var outerColor = color;
-            outerColor.a = 0.3f;
-            GenDraw.DrawRadiusRing(cell, outerRadius, outerColor);
-            
-            // Draw all affected cells within radius with proper highlighting
-            var affectedCells = new List<IntVec3>();
-            var highDamageCells = new List<IntVec3>();
-            
-            foreach (var testCell in GenRadial.RadialCellsAround(cell, currentExplosionRadius, true))
-            {
-                if (testCell.InBounds(Find.CurrentMap))
-                {
-                    var distance = testCell.DistanceTo(cell);
-                    if (distance <= currentExplosionRadius)
-                    {
-                        affectedCells.Add(testCell);
-                        if (distance <= innerRadius)
-                        {
-                            highDamageCells.Add(testCell);
-                        }
-                    }
-                }
-            }
-            
-            // Highlight high damage area
-            if (highDamageCells.Any())
-            {
-                var highDamageColor = Color.red;
-                highDamageColor.a = 0.25f;
-                GenDraw.DrawFieldEdges(highDamageCells, highDamageColor);
-            }
-            
-            // Highlight general affected area
-            var areaColor = color;
-            areaColor.a = 0.15f;
-            GenDraw.DrawFieldEdges(affectedCells, areaColor);
-            
-            // Draw target cell highlight with crosshair effect
-            var targetColor = Color.white;
-            targetColor.a = 0.9f;
-            GenDraw.DrawFieldEdges(new List<IntVec3> { cell }, targetColor);
-            
-            // Draw explosion type and radius info
-            var explosionInfo = $"{currentExplosionType.label ?? currentExplosionType.defName} - Radius: {currentExplosionRadius:F1}";
-            var infoRect = new Rect(UI.screenWidth - 300f, 50f, 290f, 30f);
-            Widgets.DrawBoxSolid(infoRect, new Color(0f, 0f, 0f, 0.7f));
-            GUI.color = Color.yellow;
-            Text.Font = GameFont.Small;
-            Widgets.Label(infoRect, explosionInfo);
-            GUI.color = Color.white;
-        }
+        // Note: Visual rendering is now handled by MapComponent_RadiusPreview for continuous display
         
         public static void StartQuickExplosion(DamageDef damageDef, float radius, float damageAmount)
         {

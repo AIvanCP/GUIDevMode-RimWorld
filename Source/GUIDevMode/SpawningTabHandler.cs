@@ -180,12 +180,10 @@ namespace GUIDevMode
                           pawn.RaceProps.IsMechanoid ? "M" : "?";
             Widgets.Label(detailsRect, infoText);
             
-            // Tooltip
+            // Tooltip (mod info removed - handled by other mods)
             if (Mouse.IsOver(rect))
             {
                 var tooltip = $"{pawn.label}\n{pawn.race?.description ?? ""}";
-                if (pawn.modContentPack?.Name != null)
-                    tooltip += $"\nMod: {pawn.modContentPack.Name}";
                 TooltipHandler.TipRegion(rect, tooltip);
             }
         }

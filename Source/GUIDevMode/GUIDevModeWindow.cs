@@ -56,6 +56,22 @@ namespace GUIDevMode
             ExplosionSystem.RefreshExplosionTypes();
         }
         
+        public override void WindowUpdate()
+        {
+            base.WindowUpdate();
+            
+            // Note: Visual previews are now handled by MapComponent_RadiusPreview
+            // which provides continuous rendering without requiring camera movement
+        }
+        
+        public override void WindowOnGUI()
+        {
+            base.WindowOnGUI();
+            
+            // Note: Visual previews are now handled by MapComponent_RadiusPreview
+            // which renders via MapComponentOnGUI() every frame
+        }
+        
         public override void DoWindowContents(Rect inRect)
         {
             // Draw background
@@ -176,12 +192,8 @@ namespace GUIDevMode
             GUI.backgroundColor = Color.white;
         }
         
-        // Keep only the static explosion preview method as it's called by the targeting system
-        public static void DrawExplosionRadiusPreviewStatic()
-        {
-            // Delegate to the new ExplosionSystem
-            ExplosionSystem.DrawExplosionRadiusPreviewStatic();
-        }
+        // Note: Visual previews are now handled by MapComponent_RadiusPreview
+        // for continuous rendering without requiring camera movement
         
         // Cache invalidation for when new content is loaded
         public static void InvalidateCache()

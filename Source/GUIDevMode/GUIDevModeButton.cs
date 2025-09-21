@@ -18,6 +18,16 @@ namespace GUIDevMode
             Log.Message("[GUI Developer Mode] GameComponent constructor called");
         }
 
+        public override void GameComponentTick()
+        {
+            // Force continuous explosion preview drawing
+            if (ExplosionSystem.ExplosionTargetingActive && Find.CurrentMap != null)
+            {
+                // Remove the invalid MarkGamePaused call - this method doesn't exist
+                // The drawing will be handled by the UI hook instead
+            }
+        }
+
         public override void GameComponentOnGUI()
         {
             if (Current.ProgramState != ProgramState.Playing)
@@ -158,7 +168,7 @@ namespace GUIDevMode
         }
     }
     
-    // Global key handler patch as backup
+    // Global key handler patch as backup and map drawing hook
     [HarmonyPatch(typeof(UIRoot_Play), "UIRootOnGUI")]
     public static class UIRoot_Play_OnGUI_Patch
     {
@@ -177,10 +187,8 @@ namespace GUIDevMode
             }
             
             // Draw explosion preview overlay if targeting is active
-            if (Event.current.type == EventType.Repaint && Find.CurrentMap != null)
-            {
-                ExplosionSystem.DrawExplosionRadiusPreviewStatic();
-            }
+            // Note: Visual previews are now handled by MapComponent_RadiusPreview
+            // for continuous rendering via MapComponentOnGUI() every frame
         }
     }
 }
