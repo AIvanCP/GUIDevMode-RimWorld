@@ -11,184 +11,157 @@ namespace GUIDevMode
         // UI State
         private Vector2 categoryScrollPosition = Vector2.zero;
         private Vector2 itemScrollPosition = Vector2.zero;
-        private Vector2 descriptionScrollPosition = Vector2.zero; // Add scroll position for description
-        private string selectedItemCategory = "Weapons"; // Start with weapons, not "All"
+        private Vector2 descriptionScrollPosition = Vector2.zero;
+        private string selectedItemCategory = "Weapons";
         private string itemSearchFilter = "";
         private int spawnQuantity = 1;
-        private QualityCategory spawnQuality = QualityCategory.Normal;
+        private string spawnQuantityText = "1";
+        // continuousSpawning removed - always true by default
+        private QualityCategory selectedQuality = QualityCategory.Normal;
         private ThingDef selectedStuff = null;
-        private bool spawnMaxStack = false;
-        // Mouse targeting is now always enabled (removed useMouseTargeting option)
+        
+        // All tab capping options
+        private int allTabItemCap = 500;
+        private string allTabCapText = "500";
+        private bool enableAllTabCap = true;
         
         // Selected item for display
         private ThingDef selectedItem = null;
         
-        // Item categories - "All" is at the bottom for safety
+        // Item categories
         private readonly string[] itemCategories = {
             "Weapons", "Apparel", "Food", "Medicine", "Drugs", 
             "Resources", "Materials", "Tools", "Buildings", "Art", "Other", "All"
         };
         
-        // Cache for categorized items with adjustable cap system
+        // Cache for categorized items
         private Dictionary<string, List<ThingDef>> categorizedItems = new Dictionary<string, List<ThingDef>>();
+        private List<ThingDef> allItemsUncapped = new List<ThingDef>(); // Full list for search
         private bool cacheBuilt = false;
-        private int maxItemsPerCategory = 2000; // Default 2k, adjustable
-        private bool showAllItems = false; // Option to show all items (no cap)
         
         public void DrawItemsTab(Rect rect)
         {
             if (!cacheBuilt)
             {
                 BuildItemCache();
+                cacheBuilt = true;
             }
             
-            var mainRect = rect.ContractedBy(5f);
-            
-            // Add controls at the top for cap settings
-            var topControlsRect = new Rect(mainRect.x, mainRect.y, mainRect.width, 60f);
-            var contentRect = new Rect(mainRect.x, topControlsRect.yMax + 5f, mainRect.width, mainRect.height - 65f);
-            
-            DrawCapControls(topControlsRect);
-            
-            // Split into left (categories & items) and right (details & controls)
-            var leftRect = new Rect(contentRect.x, contentRect.y, contentRect.width * 0.6f, contentRect.height);
-            var rightRect = new Rect(leftRect.xMax + 10f, contentRect.y, contentRect.width * 0.4f - 10f, contentRect.height);
+            // Split into left and right panels
+            var leftRect = new Rect(rect.x, rect.y, rect.width * 0.4f, rect.height);
+            var rightRect = new Rect(leftRect.xMax + 5f, rect.y, rect.width * 0.6f - 5f, rect.height);
             
             DrawLeftPanel(leftRect);
             DrawRightPanel(rightRect);
         }
         
-        private void DrawCapControls(Rect rect)
-        {
-            var listing = new Listing_Standard();
-            listing.Begin(rect);
-            
-            // Cap controls
-            var capRect = listing.GetRect(30f);
-            var labelRect = new Rect(capRect.x, capRect.y, 120f, 30f);
-            var fieldRect = new Rect(labelRect.xMax + 5f, capRect.y, 80f, 30f);
-            var checkRect = new Rect(fieldRect.xMax + 10f, capRect.y, 120f, 30f);
-            var rebuildRect = new Rect(checkRect.xMax + 10f, capRect.y, 100f, 30f);
-            
-            Widgets.Label(labelRect, "Items per category:");
-            string buffer = maxItemsPerCategory.ToString();
-            Widgets.TextFieldNumeric(fieldRect, ref maxItemsPerCategory, ref buffer, 100, 50000);
-            
-            bool newShowAll = showAllItems;
-            Widgets.CheckboxLabeled(checkRect, "Show All Items", ref newShowAll);
-            
-            if (Widgets.ButtonText(rebuildRect, "Rebuild Cache"))
-            {
-                RebuildCache();
-            }
-            
-            if (newShowAll != showAllItems)
-            {
-                showAllItems = newShowAll;
-                RebuildCache();
-            }
-            
-            listing.End();
-        }
-        
-        private void RebuildCache()
-        {
-            cacheBuilt = false;
-            categorizedItems.Clear();
-            selectedItem = null;
-        }
-        
         private void DrawLeftPanel(Rect rect)
         {
-            // Categories at the top
-            var categoryRect = new Rect(rect.x, rect.y, rect.width, 120f);
-            DrawCategorySelection(categoryRect);
+            // Adjust category panel height based on whether All tab is selected
+            var categoryPanelHeight = selectedItemCategory == "All" ? 150f : 90f; // Reduced heights
+            var categoryRect = new Rect(rect.x, rect.y, rect.width, categoryPanelHeight);
+            var itemRect = new Rect(rect.x, categoryRect.yMax + 5f, rect.width, rect.height - categoryRect.height - 5f);
             
-            // Items list below
-            var itemsRect = new Rect(rect.x, categoryRect.yMax + 5f, rect.width, rect.height - categoryRect.height - 5f);
-            DrawItemsList(itemsRect);
+            DrawCategorySelection(categoryRect);
+            DrawItemList(itemRect);
         }
         
         private void DrawCategorySelection(Rect rect)
         {
             Widgets.DrawMenuSection(rect);
             var innerRect = rect.ContractedBy(5f);
+            var currentY = innerRect.y;
             
-            GUI.BeginGroup(innerRect);
-            var listing = new Listing_Standard();
-            listing.Begin(new Rect(0, 0, innerRect.width, innerRect.height));
+            // Item search filter only
+            var itemSearchRect = new Rect(innerRect.x, currentY, innerRect.width, 25f);
+            GUI.Label(new Rect(itemSearchRect.x, itemSearchRect.y - 18f, itemSearchRect.width, 18f), "Search Items:", Text.CurFontStyle);
+            itemSearchFilter = Widgets.TextField(itemSearchRect, itemSearchFilter);
+            currentY = itemSearchRect.yMax + 5f;
             
-            listing.Label("Item Categories:");
+            // All tab cap settings (only show when "All" is selected)
+            var capSettingsHeight = 0f;
+            if (selectedItemCategory == "All")
+            {
+                capSettingsHeight = 65f; // Reduced height
+                var capSettingsRect = new Rect(innerRect.x, currentY, innerRect.width, capSettingsHeight);
+                
+                // Cap checkbox - more compact
+                var capCheckRect = new Rect(capSettingsRect.x, capSettingsRect.y, capSettingsRect.width, 20f);
+                Widgets.CheckboxLabeled(capCheckRect, $"Limit display ({allTabItemCap} items)", ref enableAllTabCap);
+                
+                // Cap amount input (only if cap is enabled) - more compact
+                if (enableAllTabCap)
+                {
+                    var capInputRect = new Rect(capSettingsRect.x, capCheckRect.yMax + 2f, capSettingsRect.width * 0.5f, 22f);
+                    var capLabelRect = new Rect(capInputRect.xMax + 5f, capInputRect.y, capSettingsRect.width * 0.5f - 5f, 22f);
+                    
+                    GUI.Label(new Rect(capSettingsRect.x, capInputRect.y - 16f, capSettingsRect.width, 14f), "Limit:", Text.CurFontStyle);
+                    allTabCapText = Widgets.TextField(capInputRect, allTabCapText);
+                    
+                    if (int.TryParse(allTabCapText, out int parsedCap))
+                    {
+                        allTabItemCap = Mathf.Max(50, parsedCap); // Minimum 50 items
+                    }
+                    else
+                    {
+                        allTabItemCap = 500;
+                        allTabCapText = "500";
+                    }
+                    
+                    if (Widgets.ButtonText(capLabelRect, "Rebuild"))
+                    {
+                        cacheBuilt = false; // Force cache rebuild with new cap
+                    }
+                }
+                currentY = capSettingsRect.yMax + 5f;
+            }
             
-            // Category buttons in rows
-            const float buttonWidth = 80f;
-            const float buttonHeight = 24f;
-            int buttonsPerRow = Mathf.FloorToInt((innerRect.width - 10f) / (buttonWidth + 5f));
+            // Category buttons (no filtering, showing all categories)
+            var buttonRect = new Rect(innerRect.x, currentY, innerRect.width, innerRect.height - (currentY - innerRect.y));
+            
+            Widgets.BeginScrollView(buttonRect, ref categoryScrollPosition, 
+                new Rect(0, 0, buttonRect.width - 16f, itemCategories.Length * 30f));
             
             for (int i = 0; i < itemCategories.Length; i++)
             {
-                int row = i / buttonsPerRow;
-                int col = i % buttonsPerRow;
-                
-                var buttonRect = new Rect(col * (buttonWidth + 5f), 25f + row * (buttonHeight + 3f), buttonWidth, buttonHeight);
-                
                 var category = itemCategories[i];
-                bool isSelected = selectedItemCategory == category;
+                var categoryButtonRect = new Rect(0, i * 30f, buttonRect.width - 16f, 28f);
                 
+                bool isSelected = selectedItemCategory == category;
                 if (isSelected)
                 {
-                    GUI.color = Color.green;
+                    Widgets.DrawHighlight(categoryButtonRect);
                 }
                 
-                if (Widgets.ButtonText(buttonRect, category))
+                // Show item count for each category
+                var itemCount = categorizedItems.ContainsKey(category) ? categorizedItems[category].Count : 0;
+                var categoryLabel = $"{category} ({itemCount})";
+                
+                if (Widgets.ButtonText(categoryButtonRect, categoryLabel))
                 {
                     selectedItemCategory = category;
                     selectedItem = null; // Clear selection when changing category
-                    itemSearchFilter = ""; // Clear search
-                }
-                
-                if (isSelected)
-                {
-                    GUI.color = Color.white;
                 }
             }
             
-            listing.End();
-            GUI.EndGroup();
+            Widgets.EndScrollView();
         }
         
-        private void DrawItemsList(Rect rect)
+        private void DrawItemList(Rect rect)
         {
             Widgets.DrawMenuSection(rect);
-            var innerRect = rect.ContractedBy(5f);
+            var listRect = rect.ContractedBy(5f);
             
-            // Search box at top
-            var searchRect = new Rect(innerRect.x, innerRect.y, innerRect.width, 24f);
-            var newSearchFilter = Widgets.TextField(searchRect, itemSearchFilter);
-            if (newSearchFilter != itemSearchFilter)
+            var items = GetFilteredItems();
+            if (!items.Any())
             {
-                itemSearchFilter = newSearchFilter;
-                selectedItem = null; // Clear selection when searching
-            }
-            
-            // Items list
-            var listRect = new Rect(innerRect.x, searchRect.yMax + 5f, innerRect.width, innerRect.height - searchRect.height - 5f);
-            
-            if (!categorizedItems.ContainsKey(selectedItemCategory))
-            {
-                Widgets.Label(listRect, "No items in this category");
+                var centerRect = new Rect(listRect.x, listRect.y + listRect.height / 2f - 10f, listRect.width, 20f);
+                Widgets.Label(centerRect, "No items found");
                 return;
             }
             
-            var items = categorizedItems[selectedItemCategory];
-            if (!string.IsNullOrEmpty(itemSearchFilter))
-            {
-                items = items.Where(item => item.label.ToLower().Contains(itemSearchFilter.ToLower()) || 
-                                          item.defName.ToLower().Contains(itemSearchFilter.ToLower())).ToList();
-            }
-            
             // Draw scrollable list of items with icons
-            var itemHeight = 32f; // Increased height to accommodate icons
+            var itemHeight = 32f;
             var scrollRect = new Rect(0, 0, listRect.width - 16f, items.Count * itemHeight);
             Widgets.BeginScrollView(listRect, ref itemScrollPosition, scrollRect);
             
@@ -211,8 +184,6 @@ namespace GUIDevMode
                 // Draw item icon (small)
                 var iconSize = 24f;
                 var iconRect = new Rect(itemRect.x + 4f, itemRect.y + 4f, iconSize, iconSize);
-                
-                // Draw icon using improved method with proper texture handling
                 DrawItemIcon(item, iconRect);
                 
                 // Item name positioned after icon
@@ -232,110 +203,106 @@ namespace GUIDevMode
                 Widgets.Label(centerRect, "Select an item to see details");
                 return;
             }
-            
+
             Widgets.DrawMenuSection(rect);
             var innerRect = rect.ContractedBy(5f);
             
-            var listing = new Listing_Standard();
-            listing.Begin(innerRect);
+            // NEW LAYOUT: Top = Large Icon, Middle = Description, Bottom = Spawn Options
             
-            // Item icon and basic info - enhanced icon display with better fallbacks
-            var iconRect = new Rect(innerRect.x, innerRect.y, 64f, 64f);
+            // TOP SECTION: Large Icon Display (128x128)
+            var largeIconSize = 128f;
+            var topSectionHeight = largeIconSize + 45f;
+            var topSectionRect = new Rect(innerRect.x, innerRect.y, innerRect.width, topSectionHeight);
             
-            // Draw background for icon
-            Widgets.DrawMenuSection(iconRect);
-            var iconInnerRect = iconRect.ContractedBy(2f);
+            // Center the large icon horizontally
+            var largeIconRect = new Rect(
+                topSectionRect.x + (topSectionRect.width - largeIconSize) / 2f,
+                topSectionRect.y + 10f,
+                largeIconSize,
+                largeIconSize
+            );
             
-            // Use the improved icon drawing method
-            DrawItemIcon(selectedItem, iconInnerRect);
+            // Draw background for large icon
+            Widgets.DrawMenuSection(largeIconRect);
+            var largeIconInner = largeIconRect.ContractedBy(3f);
             
-            var infoRect = new Rect(iconRect.xMax + 10f, innerRect.y, innerRect.width - iconRect.width - 10f, 64f);
-            GUI.BeginGroup(infoRect);
+            // Draw the large icon
+            DrawItemIcon(selectedItem, largeIconInner);
             
-            var infoListing = new Listing_Standard();
-            infoListing.Begin(new Rect(0, 0, infoRect.width, infoRect.height));
-            infoListing.Label($"Name: {selectedItem.LabelCap}");
-            // Mod info removed - handled by other mods
-            infoListing.Label($"Category: {selectedItem.category}");
-            infoListing.End();
+            // Add item name below the large icon
+            var nameRect = new Rect(topSectionRect.x, largeIconRect.yMax + 5f, topSectionRect.width, 25f);
+            var nameStyle = new GUIStyle(Text.CurFontStyle);
+            nameStyle.alignment = TextAnchor.MiddleCenter;
+            nameStyle.fontStyle = FontStyle.Bold;
+            GUI.Label(nameRect, selectedItem.LabelCap, nameStyle);
             
-            GUI.EndGroup();
+            // MIDDLE SECTION: Description
+            var middleSectionY = topSectionRect.yMax + 10f;
+            var bottomSectionHeight = 140f; // Increased from 100f to accommodate all controls
+            var middleSectionHeight = innerRect.height - topSectionHeight - bottomSectionHeight - 20f;
+            var middleSectionRect = new Rect(innerRect.x, middleSectionY, innerRect.width, middleSectionHeight);
             
-            // Skip past the icon area
-            listing.GapLine(70f);
+            // Description with scrolling (removed category info to save space)
+            var descRect = new Rect(middleSectionRect.x, middleSectionRect.y, middleSectionRect.width, middleSectionRect.height);
             
-            // Description with proper height calculation and scrolling
             if (!string.IsNullOrEmpty(selectedItem.description))
             {
-                listing.Label("Description:");
+                var descLabelRect = new Rect(descRect.x, descRect.y, descRect.width, 16f); // Reduced height further
+                GUI.Label(descLabelRect, "Description:", Text.CurFontStyle);
                 
-                // Calculate proper height for description text
-                var descWidth = listing.ColumnWidth;
-                float fullDescHeight = Text.CalcHeight(selectedItem.description, descWidth - 16f);
-                float maxDescHeight = 120f; // Maximum height before scrolling
+                var scrollableDescRect = new Rect(descRect.x, descLabelRect.yMax + 2f, descRect.width, descRect.height - 18f);
+                var descText = selectedItem.description;
+                var textHeight = Text.CalcHeight(descText, scrollableDescRect.width - 16f);
                 
-                var descRect = listing.GetRect(Mathf.Min(fullDescHeight + 10f, maxDescHeight));
-                
-                // Always use scrollable text area - this fixes the scrolling issue
-                if (fullDescHeight > maxDescHeight - 10f)
+                if (textHeight > scrollableDescRect.height)
                 {
-                    // Need scrolling - create content area larger than visible area
-                    var contentRect = new Rect(0, 0, descWidth - 16f, fullDescHeight);
-                    Widgets.BeginScrollView(descRect, ref descriptionScrollPosition, contentRect);
-                    Widgets.Label(contentRect, selectedItem.description);
+                    // Use scrollable view for long descriptions
+                    var scrollContentRect = new Rect(0, 0, scrollableDescRect.width - 16f, textHeight);
+                    Widgets.BeginScrollView(scrollableDescRect, ref descriptionScrollPosition, scrollContentRect);
+                    Widgets.Label(scrollContentRect, descText);
                     Widgets.EndScrollView();
                 }
                 else
                 {
-                    // Short description - no scrolling needed
-                    Widgets.Label(descRect, selectedItem.description);
+                    // Simple label for short descriptions
+                    Widgets.Label(scrollableDescRect, descText);
                 }
-                listing.Gap(10f);
+            }
+            else
+            {
+                var noDescRect = new Rect(descRect.x, descRect.y + 18f, descRect.width, 20f);
+                GUI.Label(noDescRect, "No description available.", Text.CurFontStyle);
             }
             
-            // Spawn controls
-            listing.GapLine();
-            listing.Label("Spawn Options:");
+            // BOTTOM SECTION: Spawn Options
+            var bottomSectionY = middleSectionRect.yMax + 10f;
+            var bottomSectionRect = new Rect(innerRect.x, bottomSectionY, innerRect.width, bottomSectionHeight);
             
-            // Quantity controls
-            var quantityRect = listing.GetRect(30f);
-            var qtyLabelRect = new Rect(quantityRect.x, quantityRect.y, 50f, quantityRect.height);
-            var qtyFieldRect = new Rect(qtyLabelRect.xMax + 5f, quantityRect.y, 80f, quantityRect.height);
-            var maxStackRect = new Rect(qtyFieldRect.xMax + 10f, quantityRect.y, 100f, quantityRect.height);
+            var listing = new Listing_Standard();
+            listing.Begin(bottomSectionRect);
             
-            Widgets.Label(qtyLabelRect, "Qty:");
-            string buffer = spawnQuantity.ToString();
-            Widgets.TextFieldNumeric(qtyFieldRect, ref spawnQuantity, ref buffer, 1, 10000);
-            Widgets.CheckboxLabeled(maxStackRect, "Max Stack", ref spawnMaxStack);
-            
-            // Quality selection for items that support it
+            // Quality selection for items that support it (including modded items with CompQuality)
             if (selectedItem.HasComp(typeof(CompQuality)))
             {
-                listing.Gap(5f);
-                var qualityRect = listing.GetRect(30f);
-                var qualityLabelRect = new Rect(qualityRect.x, qualityRect.y, 60f, qualityRect.height);
-                var qualityDropRect = new Rect(qualityLabelRect.xMax + 5f, qualityRect.y, 120f, qualityRect.height);
+                listing.Label("Quality:");
+                var qualityOptions = System.Enum.GetValues(typeof(QualityCategory)).Cast<QualityCategory>().ToArray();
+                var qualityLabels = qualityOptions.Select(q => q.GetLabel()).ToArray();
+                var currentQualityIndex = System.Array.IndexOf(qualityOptions, selectedQuality);
                 
-                Widgets.Label(qualityLabelRect, "Quality:");
-                if (Widgets.ButtonText(qualityDropRect, spawnQuality.GetLabel()))
+                var newQualityIndex = Mathf.Max(0, currentQualityIndex);
+                if (listing.ButtonText($"Quality: {qualityLabels[newQualityIndex]}"))
                 {
-                    var qualityOptions = new List<FloatMenuOption>();
-                    foreach (QualityCategory quality in System.Enum.GetValues(typeof(QualityCategory)))
-                    {
-                        if (quality == QualityCategory.Awful) continue; // Skip awful quality
-                        qualityOptions.Add(new FloatMenuOption(quality.GetLabel(), () => spawnQuality = quality));
-                    }
-                    Find.WindowStack.Add(new FloatMenu(qualityOptions));
+                    var qualityMenuOptions = qualityOptions.Select((quality, index) => 
+                        new FloatMenuOption(qualityLabels[index], () => selectedQuality = quality)).ToList();
+                    Find.WindowStack.Add(new FloatMenu(qualityMenuOptions));
                 }
             }
             
-            // Stuff/Material selection for items that need it
+            // Material/Stuff selection
             if (selectedItem.MadeFromStuff)
             {
-                listing.Gap(5f);
-                var stuffRect = listing.GetRect(30f);
-                var stuffLabelRect = new Rect(stuffRect.x, stuffRect.y, 60f, stuffRect.height);
-                var stuffDropRect = new Rect(stuffLabelRect.xMax + 5f, stuffRect.y, 120f, stuffRect.height);
+                var stuffLabelRect = listing.GetRect(20f);
+                var stuffDropRect = listing.GetRect(25f);
                 
                 Widgets.Label(stuffLabelRect, "Material:");
                 var stuffLabel = selectedStuff?.LabelCap ?? "None";
@@ -349,7 +316,7 @@ namespace GUIDevMode
                     {
                         foreach (var stuffDef in DefDatabase<ThingDef>.AllDefsListForReading
                                 .Where(def => def.IsStuff && stuffCategories.Any(cat => def.stuffProps.categories.Contains(cat)))
-                                .Take(50)) // Limit to prevent lag
+                                .Take(50))
                         {
                             stuffOptions.Add(new FloatMenuOption(stuffDef.LabelCap, () => selectedStuff = stuffDef));
                         }
@@ -360,7 +327,34 @@ namespace GUIDevMode
             
             listing.Gap(10f);
             
-            // Spawn buttons - only mouse targeting button (no dropdown/normal spawn anymore)
+            // Spawn quantity controls
+            listing.Label("Spawn Quantity:");
+            var quantityRect = listing.GetRect(30f);
+            var quantityInputRect = new Rect(quantityRect.x, quantityRect.y, quantityRect.width * 0.6f, quantityRect.height);
+            var maxButtonRect = new Rect(quantityInputRect.xMax + 5f, quantityRect.y, quantityRect.width * 0.35f, quantityRect.height);
+            
+            // Quantity input field
+            spawnQuantityText = Widgets.TextField(quantityInputRect, spawnQuantityText);
+            if (int.TryParse(spawnQuantityText, out int parsedQuantity))
+            {
+                spawnQuantity = Mathf.Max(1, parsedQuantity);
+            }
+            else
+            {
+                spawnQuantity = 1;
+                spawnQuantityText = "1";
+            }
+            
+            // Max button - sets quantity to item's stack limit
+            if (Widgets.ButtonText(maxButtonRect, "Max"))
+            {
+                spawnQuantity = selectedItem.stackLimit;
+                spawnQuantityText = spawnQuantity.ToString();
+            }
+            
+            listing.Gap(5f);
+            
+            // Spawn button (continuous spawning is always enabled)
             if (listing.ButtonText("Spawn Item with Mouse Targeting"))
             {
                 StartItemTargeting();
@@ -369,207 +363,224 @@ namespace GUIDevMode
             listing.End();
         }
         
+        private List<ThingDef> GetFilteredItems()
+        {
+            if (!categorizedItems.ContainsKey(selectedItemCategory))
+                return new List<ThingDef>();
+            
+            // For "All" category with search filter, search the full uncapped list
+            if (selectedItemCategory == "All" && !string.IsNullOrEmpty(itemSearchFilter))
+            {
+                return allItemsUncapped.Where(item => 
+                    item.LabelCap.ToString().ToLower().Contains(itemSearchFilter.ToLower())).ToList();
+            }
+            
+            var items = categorizedItems[selectedItemCategory];
+            
+            if (string.IsNullOrEmpty(itemSearchFilter))
+                return items;
+            
+            return items.Where(item => item.LabelCap.ToString().ToLower().Contains(itemSearchFilter.ToLower())).ToList();
+        }
+        
         private void BuildItemCache()
         {
             categorizedItems.Clear();
+            allItemsUncapped.Clear();
             
-            // Get all items including modded ones - more comprehensive filter
             var allItems = DefDatabase<ThingDef>.AllDefsListForReading
-                .Where(def => 
-                    (def.category == ThingCategory.Item || 
-                     def.thingClass == typeof(MinifiedThing) ||
-                     def.building != null) &&
-                    !def.IsCorpse && 
-                    !def.isUnfinishedThing &&
-                    !def.destroyOnDrop &&
-                    def.label != null)
+                .Where(def => {
+                    // Include more item types including modded content
+                    bool isValidItem = (def.category == ThingCategory.Item || 
+                                       def.thingClass == typeof(MinifiedThing) ||
+                                       def.building != null ||
+                                       def.race != null || // Include animals/mechanoids
+                                       def.plant != null || // Include plants
+                                       def.IsWeapon ||
+                                       def.IsApparel ||
+                                       def.IsIngestible ||
+                                       def.IsMedicine ||
+                                       def.IsStuff);
+                    
+                    // Basic validity checks
+                    bool hasValidProperties = !def.IsCorpse && 
+                                            !def.isUnfinishedThing &&
+                                            !def.destroyOnDrop &&
+                                            def.label != null &&
+                                            !def.label.NullOrEmpty();
+                    
+                    // Filter out items without graphics (big red X items)
+                    bool hasValidGraphics = HasValidGraphics(def);
+                    
+                    return isValidItem && hasValidProperties && hasValidGraphics;
+                })
                 .OrderBy(def => {
                     try
                     {
                         var labelCap = def.LabelCap;
                         if (labelCap != null && !labelCap.ToString().NullOrEmpty())
-                        {
                             return labelCap.ToString();
-                        }
+                        return def.defName ?? "";
                     }
                     catch
                     {
-                        // Fallback if LabelCap fails
+                        return def.defName ?? "";
                     }
-                    return def.defName ?? "";
                 })
                 .ToList();
             
-            // Initialize category lists
+            // Store full uncapped list for search functionality
+            allItemsUncapped.AddRange(allItems);
+            
+            // Initialize all categories
             foreach (var category in itemCategories)
             {
                 categorizedItems[category] = new List<ThingDef>();
             }
             
-            int effectiveLimit = showAllItems ? int.MaxValue : maxItemsPerCategory;
-            
-            // Categorize items with cap system
+            // Categorize items
+            int allTabItemCount = 0;
             foreach (var item in allItems)
             {
-                var categoryName = GetItemCategoryName(item);
+                var categoryName = GetItemCategory(item);
+                categorizedItems[categoryName].Add(item);
                 
-                // Add to specific category (with cap)
-                if (categorizedItems[categoryName].Count < effectiveLimit)
-                {
-                    categorizedItems[categoryName].Add(item);
-                }
-                
-                // Add to "All" category (with cap)
-                if (categorizedItems["All"].Count < effectiveLimit)
+                // Add to "All" category with cap consideration
+                if (!enableAllTabCap || allTabItemCount < allTabItemCap)
                 {
                     categorizedItems["All"].Add(item);
+                    allTabItemCount++;
                 }
             }
-            
-            cacheBuilt = true;
-            Log.Message($"[GUI Dev Mode] Built item cache with {allItems.Count} total items, limit: {(showAllItems ? "unlimited" : maxItemsPerCategory.ToString())} per category");
-            
-            // Log category counts for debugging
-            foreach (var category in itemCategories)
-            {
-                Log.Message($"[GUI Dev Mode] Category '{category}': {categorizedItems[category].Count} items");
-            }
-        }
-        
-        private string GetItemCategoryName(ThingDef item)
-        {
-            // Check weapons first
-            if (item.IsWeapon) return "Weapons";
-            
-            // Check apparel
-            if (item.IsApparel) return "Apparel";
-            
-            // Check ingestibles (food and drugs)
-            if (item.IsIngestible)
-            {
-                // Check for drugs first (more specific)
-                if (item.IsDrug || 
-                    item.ingestible?.drugCategory != DrugCategory.None ||
-                    item.defName.ToLowerInvariant().Contains("drug") ||
-                    item.defName.ToLowerInvariant().Contains("alcohol") ||
-                    item.defName.ToLowerInvariant().Contains("beer") ||
-                    item.defName.ToLowerInvariant().Contains("smoke") ||
-                    item.defName.ToLowerInvariant().Contains("joint") ||
-                    item.defName.ToLowerInvariant().Contains("pill") ||
-                    item.defName.ToLowerInvariant().Contains("stim") ||
-                    item.defName.ToLowerInvariant().Contains("cocaine") ||
-                    item.defName.ToLowerInvariant().Contains("morphine") ||
-                    item.defName.ToLowerInvariant().Contains("opium") ||
-                    item.defName.ToLowerInvariant().Contains("caffeine") ||
-                    item.defName.ToLowerInvariant().Contains("nicotine") ||
-                    item.defName.ToLowerInvariant().Contains("psychite") ||
-                    item.defName.ToLowerInvariant().Contains("luciferium") ||
-                    item.defName.ToLowerInvariant().Contains("ambrosia") ||
-                    item.defName.ToLowerInvariant().Contains("yayo") ||
-                    item.defName.ToLowerInvariant().Contains("flake") ||
-                    item.defName.ToLowerInvariant().Contains("wake") ||
-                    item.defName.ToLowerInvariant().Contains("tea") ||
-                    item.defName.ToLowerInvariant().Contains("wine") ||
-                    item.defName.ToLowerInvariant().Contains("whiskey") ||
-                    item.defName.ToLowerInvariant().Contains("rum") ||
-                    item.label?.ToLowerInvariant().Contains("drug") == true ||
-                    item.label?.ToLowerInvariant().Contains("alcohol") == true ||
-                    item.description?.ToLowerInvariant().Contains("drug") == true ||
-                    item.description?.ToLowerInvariant().Contains("addiction") == true)
-                {
-                    return "Drugs";
-                }
-                
-                // Otherwise it's food
-                return "Food";
-            }
-            
-            // Check medicine
-            if (item.IsMedicine || item.IsNaturalOrgan) return "Medicine";
-            
-            // Check materials/stuff
-            if (item.IsStuff) return "Materials";
-            
-            // Check buildings (including minified)
-            if (item.building != null || item.thingClass == typeof(MinifiedThing)) return "Buildings";
-            
-            // Check art
-            if (item.IsArt) return "Art";
-            
-            // Check tools by category names
-            if (item.thingCategories?.Any(cat => 
-                cat.defName.ToLowerInvariant().Contains("tool") ||
-                cat.defName.ToLowerInvariant().Contains("equipment") ||
-                cat.defName.ToLowerInvariant().Contains("utility")) == true) 
-                return "Tools";
-            
-            // Resource-like items (stackable, not food/medicine/drug)
-            if (item.stackLimit > 1 && !item.IsIngestible && !item.IsMedicine && !item.IsDrug)
-                return "Resources";
-            
-            return "Other";
-        }
-        
-        private void StartItemTargeting()
-        {
-            if (selectedItem == null) return;
-            
-            // Auto-close GUI when starting targeting
-            Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
-            
-            Messages.Message($"Targeting {selectedItem.LabelCap} - Right-click to cancel", MessageTypeDefOf.NeutralEvent);
-            
-            Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
-                if (target.IsValid)
-                {
-                    var quantity = spawnMaxStack ? selectedItem.stackLimit : spawnQuantity;
-                    var stuff = selectedItem.MadeFromStuff ? selectedStuff : null;
-                    
-                    Thing thing = ThingMaker.MakeThing(selectedItem, stuff);
-                    
-                    if (thing.def.HasComp(typeof(CompQuality)) && thing.TryGetComp<CompQuality>() != null)
-                    {
-                        thing.TryGetComp<CompQuality>().SetQuality(spawnQuality, ArtGenerationContext.Colony);
-                    }
-                    
-                    thing.stackCount = quantity;
-                    
-                    GenPlace.TryPlaceThing(thing, target.Cell, Find.CurrentMap, ThingPlaceMode.Near);
-                    Messages.Message($"Spawned {quantity}x {thing.LabelCap} at {target.Cell}", MessageTypeDefOf.PositiveEvent);
-                    
-                    // Continue targeting for more items (continuous spawning)
-                    StartItemTargeting();
-                }
-                else
-                {
-                    Messages.Message("Item spawning cancelled", MessageTypeDefOf.NeutralEvent);
-                }
-            });
         }
         
         /// <summary>
-        /// Draws an item icon with improved fallback logic and proper texture handling
+        /// Checks if an item has valid graphics to avoid big red X items
         /// </summary>
+        private bool HasValidGraphics(ThingDef def)
+        {
+            try
+            {
+                // First check: Does it have a valid uiIcon?
+                if (def.uiIcon != null)
+                    return true;
+                
+                // Second check: Does it have valid graphic data with existing texture?
+                if (def.graphicData != null && !def.graphicData.texPath.NullOrEmpty())
+                {
+                    // Try to load the texture to verify it exists - more strict checking
+                    var texture = ContentFinder<Texture2D>.Get(def.graphicData.texPath, false);
+                    if (texture != null && texture != BaseContent.BadTex)
+                        return true;
+                }
+                
+                // Third check: Does the graphic have a valid texture?
+                if (def.graphic?.MatSingle?.mainTexture != null)
+                {
+                    var texture = def.graphic.MatSingle.mainTexture;
+                    if (texture != BaseContent.BadTex && texture.name != "ERRORTEX")
+                        return true;
+                }
+                
+                // Fourth check: Try to initialize graphic if not done yet
+                if (def.graphic == null && def.graphicData != null)
+                {
+                    try
+                    {
+                        def.graphic = def.graphicData.Graphic;
+                        if (def.graphic?.MatSingle?.mainTexture != null)
+                        {
+                            var texture = def.graphic.MatSingle.mainTexture;
+                            if (texture != BaseContent.BadTex && texture.name != "ERRORTEX")
+                                return true;
+                        }
+                    }
+                    catch
+                    {
+                        // Failed to initialize graphic
+                    }
+                }
+                
+                // Fifth check: Special case for buildings - they might have different graphic setup
+                if (def.building != null)
+                {
+                    // Buildings might have valid graphics even if not immediately obvious
+                    // But we should still filter out ones without any texture path
+                    if (def.graphicData != null && !def.graphicData.texPath.NullOrEmpty())
+                    {
+                        return true; // Allow buildings with texture paths
+                    }
+                }
+                
+                // If all checks fail, this item doesn't have valid graphics
+                return false;
+            }
+            catch
+            {
+                // If any exception occurs, assume no valid graphics
+                return false;
+            }
+        }
+        
+        private string GetItemCategory(ThingDef item)
+        {
+            // More comprehensive categorization including modded items
+            if (item.IsWeapon) return "Weapons";
+            if (item.IsApparel) return "Apparel";
+            
+            // Food, medicine, drugs with better detection
+            if (item.IsIngestible)
+            {
+                if (item.IsDrug) return "Drugs";
+                if (item.IsMedicine) return "Medicine";
+                return "Food";
+            }
+            if (item.IsMedicine) return "Medicine";
+            
+            // Materials and stuff
+            if (item.IsStuff) return "Materials";
+            
+            // Buildings (including modded structures)
+            if (item.building != null || item.thingClass == typeof(MinifiedThing)) return "Buildings";
+            
+            // Animals and mechanoids
+            if (item.race != null) return "Other"; // Could add "Creatures" category if desired
+            
+            // Plants
+            if (item.plant != null) return "Other"; // Could add "Plants" category if desired
+            
+            // Tools and equipment (items with verbs but not weapons)
+            if (item.Verbs != null && item.Verbs.Any() && !item.IsWeapon) return "Tools";
+            
+            // Art and decorative items
+            if (item.thingCategories != null && item.thingCategories.Any(cat => 
+                cat.defName.Contains("Art") || cat.defName.Contains("Furniture") || cat.defName.Contains("Decoration")))
+                return "Art";
+            
+            // Resources (raw materials, chunks, etc.)
+            if (item.category == ThingCategory.Item) return "Resources";
+            
+            // Fallback for everything else
+            return "Other";
+        }
+        
         private void DrawItemIcon(ThingDef item, Rect iconRect)
         {
             Texture2D texture = null;
             
-            // First try: Direct uiIcon
+            // Try to get icon with multiple fallbacks
             if (item.uiIcon != null)
             {
                 texture = item.uiIcon;
             }
-            // Second try: Graphic material texture
             else if (item.graphic?.MatSingle?.mainTexture != null)
             {
                 texture = item.graphic.MatSingle.mainTexture as Texture2D;
             }
-            // Third try: Force graphic initialization and try again
             else
             {
                 try
                 {
-                    // Try to initialize the graphic if it's not already done
                     if (item.graphic == null)
                     {
                         item.graphic = item.graphicData?.Graphic;
@@ -579,10 +590,8 @@ namespace GUIDevMode
                     {
                         texture = item.graphic.MatSingle.mainTexture as Texture2D;
                     }
-                    // Fourth try: Use the default item texture
                     else if (item.uiIcon == null && item.graphicData != null)
                     {
-                        // Force load the UI icon
                         var iconPath = item.graphicData.texPath;
                         if (!iconPath.NullOrEmpty())
                         {
@@ -614,6 +623,41 @@ namespace GUIDevMode
                 style.fontSize = Mathf.RoundToInt(iconRect.height * 0.6f);
                 GUI.Label(iconRect, "?", style);
             }
+        }
+        
+        private void StartItemTargeting()
+        {
+            if (selectedItem == null) return;
+            
+            // Always continuous spawning mode
+            Messages.Message($"Select location to spawn {selectedItem.LabelCap} (Continuous - Right-click to cancel)", MessageTypeDefOf.NeutralEvent);
+            
+            // Close GUI when starting targeting
+            Find.WindowStack.TryRemove(typeof(GUIDevModeWindow), false);
+            
+            Find.Targeter.BeginTargeting(TargetingParameters.ForCell(), target => {
+                if (target.IsValid)
+                {
+                    var thing = ThingMaker.MakeThing(selectedItem, selectedStuff);
+                    
+                    // Apply quality if the item supports it
+                    if (thing.TryGetComp<CompQuality>() != null)
+                    {
+                        thing.TryGetComp<CompQuality>().SetQuality(selectedQuality, ArtGenerationContext.Colony);
+                    }
+                    
+                    thing.stackCount = Mathf.Min(spawnQuantity, selectedItem.stackLimit);
+                    GenPlace.TryPlaceThing(thing, target.Cell, Find.CurrentMap, ThingPlaceMode.Near);
+                    Messages.Message($"Spawned {thing.stackCount}x {thing.LabelCap}", MessageTypeDefOf.PositiveEvent);
+                    
+                    // Always restart targeting for continuous spawning
+                    StartItemTargeting(); // Recursive call to continue targeting
+                }
+                else
+                {
+                    Messages.Message("Item spawning cancelled", MessageTypeDefOf.NeutralEvent);
+                }
+            }, null, null, null);
         }
     }
 }

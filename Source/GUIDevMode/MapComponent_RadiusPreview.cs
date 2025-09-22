@@ -116,31 +116,8 @@ namespace GUIDevMode
             }
             else
             {
-                // Enhanced single cell highlight to make it more visible
+                // Simple single cell highlight - no 3x3 preview area
                 GenDraw.DrawFieldEdges(new List<IntVec3> { mouseCell }, color);
-                
-                // Draw a larger preview area around the mouse to show potential zone size
-                var previewSize = 3; // Show a 3x3 area preview
-                var previewCells = new List<IntVec3>();
-                for (int x = mouseCell.x - previewSize; x <= mouseCell.x + previewSize; x++)
-                {
-                    for (int z = mouseCell.z - previewSize; z <= mouseCell.z + previewSize; z++)
-                    {
-                        var cell = new IntVec3(x, mouseCell.y, z);
-                        if (cell.InBounds(map))
-                        {
-                            previewCells.Add(cell);
-                        }
-                    }
-                }
-                
-                // Draw preview area with lower opacity
-                var previewColor = color;
-                previewColor.a = 0.2f;
-                if (previewCells.Any())
-                {
-                    GenDraw.DrawFieldEdges(previewCells, previewColor);
-                }
             }
         }
         
@@ -238,12 +215,31 @@ namespace GUIDevMode
         /// </summary>
         public override void MapComponentTick()
         {
-            // Ensure previews stay visible by triggering frequent updates
+            // Light touch approach - only force redraw if previews are active
+            // Removed Find.MapUI.Notify_SwitchedMap() to prevent interference during gameplay
             if (explosionPreviewActive || plantGrowthPreviewActive)
             {
-                // This helps ensure the GUI rendering stays active
                 base.MapComponentTick();
             }
+        }
+        
+        /// <summary>
+        /// Alternative rendering method to ensure previews show consistently
+        /// </summary>
+        public override void MapComponentDraw()
+        {
+            // Draw previews using the map drawing system as a backup
+            if (explosionPreviewActive && explosionDamageType != null)
+            {
+                DrawExplosionRadiusPreview();
+            }
+            
+            if (plantGrowthPreviewActive)
+            {
+                DrawPlantGrowthPreview();
+            }
+            
+            base.MapComponentDraw();
         }
         
         /// <summary>
@@ -251,11 +247,12 @@ namespace GUIDevMode
         /// </summary>
         public override void MapComponentUpdate()
         {
-            // More aggressive cleanup - check every update cycle
+            // Only clear if the targeting systems explicitly say they're not active
+            // Don't auto-clear based on Find.Targeter.IsTargeting to prevent interference during gameplay
             if (explosionPreviewActive)
             {
-                // Clear if targeting is definitely not active OR explosion system says it's not targeting
-                if (!Find.Targeter.IsTargeting || !ExplosionSystem.ExplosionTargetingActive)
+                // Only clear if explosion system explicitly says it's not targeting
+                if (!ExplosionSystem.ExplosionTargetingActive)
                 {
                     StopExplosionPreview();
                 }
@@ -263,8 +260,8 @@ namespace GUIDevMode
             
             if (plantGrowthPreviewActive)
             {
-                // Clear if targeting is definitely not active OR utility system says it's not targeting
-                if (!Find.Targeter.IsTargeting || !UtilityTabsHandler.IsTargetingPlantGrowth)
+                // Only clear if utility system explicitly says it's not targeting
+                if (!UtilityTabsHandler.IsTargetingPlantGrowth)
                 {
                     StopPlantGrowthPreview();
                 }
