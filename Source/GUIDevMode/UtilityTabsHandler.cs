@@ -1277,6 +1277,10 @@ namespace GUIDevMode
                         }
                         // Reset static variables when done
                         ClearPlantGrowthTargeting();
+                    }, null, null, null, () => {
+                        // Cancel second corner selection
+                        ClearPlantGrowthTargeting();
+                        Messages.Message("Plant growth zone selection cancelled", MessageTypeDefOf.NeutralEvent);
                     });
                 }
                 else
@@ -1285,6 +1289,10 @@ namespace GUIDevMode
                     ClearPlantGrowthTargeting();
                     Messages.Message("Plant growth zone selection cancelled", MessageTypeDefOf.NeutralEvent);
                 }
+            }, null, null, null, () => {
+                // Cancel first corner selection
+                ClearPlantGrowthTargeting();
+                Messages.Message("Plant growth zone selection cancelled", MessageTypeDefOf.NeutralEvent);
             });
         }
         
@@ -1494,6 +1502,8 @@ namespace GUIDevMode
                 {
                     Messages.Message("Berserk targeting cancelled", MessageTypeDefOf.NeutralEvent);
                 }
+            }, null, null, null, () => {
+                Messages.Message("Berserk targeting cancelled", MessageTypeDefOf.NeutralEvent);
             });
         }
         
@@ -1516,6 +1526,8 @@ namespace GUIDevMode
                 {
                     Messages.Message("Animal attack targeting cancelled or invalid target", MessageTypeDefOf.NeutralEvent);
                 }
+            }, null, null, null, () => {
+                Messages.Message("Animal attack targeting cancelled", MessageTypeDefOf.NeutralEvent);
             });
         }
         

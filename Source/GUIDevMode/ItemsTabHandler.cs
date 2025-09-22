@@ -11,6 +11,7 @@ namespace GUIDevMode
         // UI State
         private Vector2 categoryScrollPosition = Vector2.zero;
         private Vector2 itemScrollPosition = Vector2.zero;
+        private Vector2 descriptionScrollPosition = Vector2.zero; // Add scroll position for description
         private string selectedItemCategory = "Weapons"; // Start with weapons, not "All"
         private string itemSearchFilter = "";
         private int spawnQuantity = 1;
@@ -186,14 +187,15 @@ namespace GUIDevMode
                                           item.defName.ToLower().Contains(itemSearchFilter.ToLower())).ToList();
             }
             
-            // Draw scrollable list of items (text only)
-            var scrollRect = new Rect(0, 0, listRect.width - 16f, items.Count * 22f);
+            // Draw scrollable list of items with icons
+            var itemHeight = 32f; // Increased height to accommodate icons
+            var scrollRect = new Rect(0, 0, listRect.width - 16f, items.Count * itemHeight);
             Widgets.BeginScrollView(listRect, ref itemScrollPosition, scrollRect);
             
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                var itemRect = new Rect(0, i * 22f, scrollRect.width, 22f);
+                var itemRect = new Rect(0, i * itemHeight, scrollRect.width, itemHeight);
                 
                 bool isSelected = selectedItem == item;
                 if (isSelected)
@@ -206,10 +208,16 @@ namespace GUIDevMode
                     selectedItem = item;
                 }
                 
-                // Item name without mod info (mod detection handled by other mods)
-                var itemText = item.LabelCap;
+                // Draw item icon (small)
+                var iconSize = 24f;
+                var iconRect = new Rect(itemRect.x + 4f, itemRect.y + 4f, iconSize, iconSize);
                 
-                Widgets.Label(itemRect, itemText);
+                // Draw icon using improved method with proper texture handling
+                DrawItemIcon(item, iconRect);
+                
+                // Item name positioned after icon
+                var textRect = new Rect(iconRect.xMax + 8f, itemRect.y, itemRect.width - iconRect.width - 12f, itemRect.height);
+                Widgets.Label(textRect, item.LabelCap);
             }
             
             Widgets.EndScrollView();
@@ -231,38 +239,15 @@ namespace GUIDevMode
             var listing = new Listing_Standard();
             listing.Begin(innerRect);
             
-            // Item icon and basic info - improved icon display
+            // Item icon and basic info - enhanced icon display with better fallbacks
             var iconRect = new Rect(innerRect.x, innerRect.y, 64f, 64f);
-            if (selectedItem.uiIcon != null)
-            {
-                GUI.DrawTexture(iconRect, selectedItem.uiIcon);
-            }
-            else if (selectedItem.graphic?.MatSingle?.mainTexture != null)
-            {
-                // Try to use the graphic texture as fallback
-                GUI.DrawTexture(iconRect, selectedItem.graphic.MatSingle.mainTexture);
-            }
-            else
-            {
-                // Try to generate icon from thing if possible
-                try
-                {
-                    var thing = ThingMaker.MakeThing(selectedItem);
-                    if (thing?.def?.uiIcon != null)
-                    {
-                        GUI.DrawTexture(iconRect, thing.def.uiIcon);
-                    }
-                    else
-                    {
-                        Widgets.DrawTextureFitted(iconRect, BaseContent.BadTex, 1f);
-                    }
-                    thing?.Destroy();
-                }
-                catch
-                {
-                    Widgets.DrawTextureFitted(iconRect, BaseContent.BadTex, 1f);
-                }
-            }
+            
+            // Draw background for icon
+            Widgets.DrawMenuSection(iconRect);
+            var iconInnerRect = iconRect.ContractedBy(2f);
+            
+            // Use the improved icon drawing method
+            DrawItemIcon(selectedItem, iconInnerRect);
             
             var infoRect = new Rect(iconRect.xMax + 10f, innerRect.y, innerRect.width - iconRect.width - 10f, 64f);
             GUI.BeginGroup(infoRect);
@@ -279,28 +264,30 @@ namespace GUIDevMode
             // Skip past the icon area
             listing.GapLine(70f);
             
-            // Description with proper height calculation
+            // Description with proper height calculation and scrolling
             if (!string.IsNullOrEmpty(selectedItem.description))
             {
                 listing.Label("Description:");
                 
                 // Calculate proper height for description text
-                var tempRect = new Rect(0, 0, listing.ColumnWidth, 1000f);
-                float descHeight = Text.CalcHeight(selectedItem.description, tempRect.width);
-                descHeight = Mathf.Max(60f, Mathf.Min(descHeight + 10f, 120f)); // Min 60, max 120 height
+                var descWidth = listing.ColumnWidth;
+                float fullDescHeight = Text.CalcHeight(selectedItem.description, descWidth - 16f);
+                float maxDescHeight = 120f; // Maximum height before scrolling
                 
-                var descRect = listing.GetRect(descHeight);
+                var descRect = listing.GetRect(Mathf.Min(fullDescHeight + 10f, maxDescHeight));
                 
-                // Use scrollable text area for long descriptions
-                if (descHeight >= 120f)
+                // Always use scrollable text area - this fixes the scrolling issue
+                if (fullDescHeight > maxDescHeight - 10f)
                 {
-                    var descScrollPos = Vector2.zero;
-                    Widgets.BeginScrollView(descRect, ref descScrollPos, new Rect(0, 0, descRect.width - 16f, Text.CalcHeight(selectedItem.description, descRect.width - 16f)));
-                    Widgets.Label(new Rect(0, 0, descRect.width - 16f, Text.CalcHeight(selectedItem.description, descRect.width - 16f)), selectedItem.description);
+                    // Need scrolling - create content area larger than visible area
+                    var contentRect = new Rect(0, 0, descWidth - 16f, fullDescHeight);
+                    Widgets.BeginScrollView(descRect, ref descriptionScrollPosition, contentRect);
+                    Widgets.Label(contentRect, selectedItem.description);
                     Widgets.EndScrollView();
                 }
                 else
                 {
+                    // Short description - no scrolling needed
                     Widgets.Label(descRect, selectedItem.description);
                 }
                 listing.Gap(10f);
@@ -558,6 +545,75 @@ namespace GUIDevMode
                     Messages.Message("Item spawning cancelled", MessageTypeDefOf.NeutralEvent);
                 }
             });
+        }
+        
+        /// <summary>
+        /// Draws an item icon with improved fallback logic and proper texture handling
+        /// </summary>
+        private void DrawItemIcon(ThingDef item, Rect iconRect)
+        {
+            Texture2D texture = null;
+            
+            // First try: Direct uiIcon
+            if (item.uiIcon != null)
+            {
+                texture = item.uiIcon;
+            }
+            // Second try: Graphic material texture
+            else if (item.graphic?.MatSingle?.mainTexture != null)
+            {
+                texture = item.graphic.MatSingle.mainTexture as Texture2D;
+            }
+            // Third try: Force graphic initialization and try again
+            else
+            {
+                try
+                {
+                    // Try to initialize the graphic if it's not already done
+                    if (item.graphic == null)
+                    {
+                        item.graphic = item.graphicData?.Graphic;
+                    }
+                    
+                    if (item.graphic?.MatSingle?.mainTexture != null)
+                    {
+                        texture = item.graphic.MatSingle.mainTexture as Texture2D;
+                    }
+                    // Fourth try: Use the default item texture
+                    else if (item.uiIcon == null && item.graphicData != null)
+                    {
+                        // Force load the UI icon
+                        var iconPath = item.graphicData.texPath;
+                        if (!iconPath.NullOrEmpty())
+                        {
+                            texture = ContentFinder<Texture2D>.Get(iconPath, false);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Failed to get texture, will use fallback
+                }
+            }
+            
+            // Draw the texture or fallback
+            if (texture != null)
+            {
+                GUI.DrawTexture(iconRect, texture);
+            }
+            else
+            {
+                // Fallback: Draw a gray placeholder
+                GUI.color = Color.gray;
+                GUI.DrawTexture(iconRect, BaseContent.WhiteTex);
+                GUI.color = Color.white;
+                
+                // Add a small "?" in the center to indicate missing icon
+                var style = new GUIStyle(Text.CurFontStyle);
+                style.alignment = TextAnchor.MiddleCenter;
+                style.fontSize = Mathf.RoundToInt(iconRect.height * 0.6f);
+                GUI.Label(iconRect, "?", style);
+            }
         }
     }
 }

@@ -437,6 +437,10 @@ namespace GUIDevMode
                     ClearExplosionTargeting();
                     Messages.Message("Explosion targeting stopped", MessageTypeDefOf.NeutralEvent);
                 }
+            }, null, null, null, () => {
+                // This is the cancel action - called on right-click
+                ClearExplosionTargeting();
+                Messages.Message("Explosion targeting cancelled", MessageTypeDefOf.NeutralEvent);
             });
         }
         

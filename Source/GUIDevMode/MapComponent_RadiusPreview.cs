@@ -23,8 +23,16 @@ namespace GUIDevMode
         public static IntVec3 plantGrowthFirstCorner = IntVec3.Invalid;
         public static bool hasPlantGrowthFirstCorner = false;
         
+        // Reference to current instance for direct access
+        private static MapComponent_RadiusPreview currentInstance = null;
+        
+        // UI drawing backup system
+        private static bool uiDrawingRegistered = false;
+        
         public MapComponent_RadiusPreview(Map map) : base(map)
         {
+            currentInstance = this;
+            Log.Message("[GUI Dev Mode] MapComponent_RadiusPreview instantiated for map");
         }
         
         /// <summary>
@@ -54,9 +62,14 @@ namespace GUIDevMode
         {
             var mouseCell = UI.MouseCell();
             if (!mouseCell.InBounds(map)) return;
+
+            // Force redraw by ensuring visibility
+            GenDraw.DrawRadiusRing(mouseCell, explosionRadius, explosionColor);
             
-            // Main explosion radius ring - bright yellow for visibility
-            GenDraw.DrawRadiusRing(mouseCell, explosionRadius, Color.yellow);
+            // Additional visual enhancements for better visibility
+            var brightColor = Color.yellow;
+            brightColor.a = 0.8f;
+            GenDraw.DrawRadiusRing(mouseCell, explosionRadius, brightColor);
             
             // Inner damage ring at 75% radius - red for high damage area
             var innerRadius = explosionRadius * 0.75f;
@@ -73,22 +86,8 @@ namespace GUIDevMode
             outerColor.a = 0.4f;
             GenDraw.DrawRadiusRing(mouseCell, outerRadius, outerColor);
             
-            // Highlight affected cells with semi-transparent overlay
-            var affectedCells = GenRadial.RadialCellsAround(mouseCell, explosionRadius, true)
-                .Where(c => c.InBounds(map))
-                .ToList();
-            
-            if (affectedCells.Any())
-            {
-                var areaColor = explosionColor;
-                areaColor.a = 0.15f;
-                GenDraw.DrawFieldEdges(affectedCells, areaColor);
-            }
-            
-            // Target cell crosshair
-            var targetColor = Color.white;
-            targetColor.a = 0.9f;
-            GenDraw.DrawFieldEdges(new List<IntVec3> { mouseCell }, targetColor);
+            // Highlight center cell for targeting precision
+            GenDraw.DrawFieldEdges(new List<IntVec3> { mouseCell }, Color.white);
         }
         
         /// <summary>
@@ -111,14 +110,37 @@ namespace GUIDevMode
                     GenDraw.DrawFieldEdges(cells, color);
                 }
                 
-                // Highlight corners
+                // Highlight corners with different colors and labels
                 GenDraw.DrawFieldEdges(new List<IntVec3> { plantGrowthFirstCorner }, Color.yellow);
                 GenDraw.DrawFieldEdges(new List<IntVec3> { mouseCell }, Color.cyan);
             }
             else
             {
-                // Just highlight the current cell
+                // Enhanced single cell highlight to make it more visible
                 GenDraw.DrawFieldEdges(new List<IntVec3> { mouseCell }, color);
+                
+                // Draw a larger preview area around the mouse to show potential zone size
+                var previewSize = 3; // Show a 3x3 area preview
+                var previewCells = new List<IntVec3>();
+                for (int x = mouseCell.x - previewSize; x <= mouseCell.x + previewSize; x++)
+                {
+                    for (int z = mouseCell.z - previewSize; z <= mouseCell.z + previewSize; z++)
+                    {
+                        var cell = new IntVec3(x, mouseCell.y, z);
+                        if (cell.InBounds(map))
+                        {
+                            previewCells.Add(cell);
+                        }
+                    }
+                }
+                
+                // Draw preview area with lower opacity
+                var previewColor = color;
+                previewColor.a = 0.2f;
+                if (previewCells.Any())
+                {
+                    GenDraw.DrawFieldEdges(previewCells, previewColor);
+                }
             }
         }
         
@@ -158,6 +180,17 @@ namespace GUIDevMode
             explosionDamageType = damageType;
             explosionRadius = radius;
             explosionColor = color;
+            
+            // Ensure the MapComponent exists and is accessible
+            var currentMap = Find.CurrentMap;
+            if (currentMap != null)
+            {
+                var component = currentMap.GetComponent<MapComponent_RadiusPreview>();
+                if (component == null)
+                {
+                    Log.Warning("[GUI Dev Mode] MapComponent_RadiusPreview not found on current map!");
+                }
+            }
         }
         
         /// <summary>
@@ -168,6 +201,7 @@ namespace GUIDevMode
             explosionPreviewActive = false;
             explosionDamageType = null;
             explosionRadius = 0f;
+            explosionColor = Color.white;
         }
         
         /// <summary>
@@ -200,24 +234,37 @@ namespace GUIDevMode
         }
         
         /// <summary>
+        /// Called every tick to ensure continuous rendering
+        /// </summary>
+        public override void MapComponentTick()
+        {
+            // Ensure previews stay visible by triggering frequent updates
+            if (explosionPreviewActive || plantGrowthPreviewActive)
+            {
+                // This helps ensure the GUI rendering stays active
+                base.MapComponentTick();
+            }
+        }
+        
+        /// <summary>
         /// Called when the map component updates
         /// </summary>
         public override void MapComponentUpdate()
         {
-            // Monitor targeter state and auto-clear previews if targeting was cancelled
-            if (explosionPreviewActive && !Find.Targeter.IsTargeting)
+            // More aggressive cleanup - check every update cycle
+            if (explosionPreviewActive)
             {
-                // Check if explosion targeting should continue
-                if (!ExplosionSystem.ExplosionTargetingActive)
+                // Clear if targeting is definitely not active OR explosion system says it's not targeting
+                if (!Find.Targeter.IsTargeting || !ExplosionSystem.ExplosionTargetingActive)
                 {
                     StopExplosionPreview();
                 }
             }
             
-            if (plantGrowthPreviewActive && !Find.Targeter.IsTargeting)
+            if (plantGrowthPreviewActive)
             {
-                // Check if plant growth targeting should continue
-                if (!UtilityTabsHandler.IsTargetingPlantGrowth)
+                // Clear if targeting is definitely not active OR utility system says it's not targeting
+                if (!Find.Targeter.IsTargeting || !UtilityTabsHandler.IsTargetingPlantGrowth)
                 {
                     StopPlantGrowthPreview();
                 }
