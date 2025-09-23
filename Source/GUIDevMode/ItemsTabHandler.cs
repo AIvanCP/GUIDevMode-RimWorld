@@ -119,13 +119,16 @@ namespace GUIDevMode
             // Category buttons (no filtering, showing all categories)
             var buttonRect = new Rect(innerRect.x, currentY, innerRect.width, innerRect.height - (currentY - innerRect.y));
             
+            // Reduced button height from 30f to 25f for more compact layout
+            var buttonHeight = 25f;
+            
             Widgets.BeginScrollView(buttonRect, ref categoryScrollPosition, 
-                new Rect(0, 0, buttonRect.width - 16f, itemCategories.Length * 30f));
+                new Rect(0, 0, buttonRect.width - 16f, itemCategories.Length * buttonHeight));
             
             for (int i = 0; i < itemCategories.Length; i++)
             {
                 var category = itemCategories[i];
-                var categoryButtonRect = new Rect(0, i * 30f, buttonRect.width - 16f, 28f);
+                var categoryButtonRect = new Rect(0, i * buttonHeight, buttonRect.width - 16f, buttonHeight - 2f); // Slightly smaller for spacing
                 
                 bool isSelected = selectedItemCategory == category;
                 if (isSelected)
@@ -238,7 +241,14 @@ namespace GUIDevMode
             
             // MIDDLE SECTION: Description
             var middleSectionY = topSectionRect.yMax + 10f;
-            var bottomSectionHeight = 140f; // Increased from 100f to accommodate all controls
+            
+            // Calculate dynamic bottom section height based on what options are needed
+            var bottomSectionHeight = 80f; // Base height for quantity and spawn button
+            if (selectedItem.HasComp(typeof(CompQuality)))
+                bottomSectionHeight += 50f; // Add space for quality selection
+            if (selectedItem.MadeFromStuff)
+                bottomSectionHeight += 50f; // Add space for material selection
+            
             var middleSectionHeight = innerRect.height - topSectionHeight - bottomSectionHeight - 20f;
             var middleSectionRect = new Rect(innerRect.x, middleSectionY, innerRect.width, middleSectionHeight);
             
@@ -284,29 +294,35 @@ namespace GUIDevMode
             // Quality selection for items that support it (including modded items with CompQuality)
             if (selectedItem.HasComp(typeof(CompQuality)))
             {
-                listing.Label("Quality:");
+                var qualityRect = listing.GetRect(22f); // More compact
+                Widgets.Label(new Rect(qualityRect.x, qualityRect.y, 60f, qualityRect.height), "Quality:");
+                
                 var qualityOptions = System.Enum.GetValues(typeof(QualityCategory)).Cast<QualityCategory>().ToArray();
                 var qualityLabels = qualityOptions.Select(q => q.GetLabel()).ToArray();
                 var currentQualityIndex = System.Array.IndexOf(qualityOptions, selectedQuality);
                 
                 var newQualityIndex = Mathf.Max(0, currentQualityIndex);
-                if (listing.ButtonText($"Quality: {qualityLabels[newQualityIndex]}"))
+                var qualityButtonRect = new Rect(qualityRect.x + 65f, qualityRect.y, qualityRect.width - 65f, qualityRect.height);
+                
+                if (Widgets.ButtonText(qualityButtonRect, qualityLabels[newQualityIndex]))
                 {
                     var qualityMenuOptions = qualityOptions.Select((quality, index) => 
                         new FloatMenuOption(qualityLabels[index], () => selectedQuality = quality)).ToList();
                     Find.WindowStack.Add(new FloatMenu(qualityMenuOptions));
                 }
+                listing.Gap(3f);
             }
             
             // Material/Stuff selection
             if (selectedItem.MadeFromStuff)
             {
-                var stuffLabelRect = listing.GetRect(20f);
-                var stuffDropRect = listing.GetRect(25f);
+                var materialRect = listing.GetRect(22f); // More compact
+                Widgets.Label(new Rect(materialRect.x, materialRect.y, 60f, materialRect.height), "Material:");
                 
-                Widgets.Label(stuffLabelRect, "Material:");
                 var stuffLabel = selectedStuff?.LabelCap ?? "None";
-                if (Widgets.ButtonText(stuffDropRect, stuffLabel))
+                var materialButtonRect = new Rect(materialRect.x + 65f, materialRect.y, materialRect.width - 65f, materialRect.height);
+                
+                if (Widgets.ButtonText(materialButtonRect, stuffLabel))
                 {
                     var stuffOptions = new List<FloatMenuOption>();
                     stuffOptions.Add(new FloatMenuOption("None", () => selectedStuff = null));
@@ -323,13 +339,14 @@ namespace GUIDevMode
                     }
                     Find.WindowStack.Add(new FloatMenu(stuffOptions));
                 }
+                listing.Gap(3f);
             }
             
-            listing.Gap(10f);
+            // Spawn quantity controls - more compact
+            var quantityLabelRect = listing.GetRect(16f);
+            Widgets.Label(quantityLabelRect, "Spawn Quantity:");
             
-            // Spawn quantity controls
-            listing.Label("Spawn Quantity:");
-            var quantityRect = listing.GetRect(30f);
+            var quantityRect = listing.GetRect(25f);
             var quantityInputRect = new Rect(quantityRect.x, quantityRect.y, quantityRect.width * 0.6f, quantityRect.height);
             var maxButtonRect = new Rect(quantityInputRect.xMax + 5f, quantityRect.y, quantityRect.width * 0.35f, quantityRect.height);
             
@@ -352,7 +369,7 @@ namespace GUIDevMode
                 spawnQuantityText = spawnQuantity.ToString();
             }
             
-            listing.Gap(5f);
+            listing.Gap(3f);
             
             // Spawn button (continuous spawning is always enabled)
             if (listing.ButtonText("Spawn Item with Mouse Targeting"))
