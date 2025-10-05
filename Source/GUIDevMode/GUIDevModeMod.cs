@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 using Verse;
 using System.Reflection;
@@ -139,6 +140,31 @@ namespace GUIDevMode
             {
                 game.components.Add(new GUIDevModeButton(game));
                 Log.Message("[GUI Developer Mode] GameComponent added to loaded game");
+            }
+        }
+    }
+    
+    // Patch to register MapComponent_RadiusPreview when map is constructed
+    [HarmonyPatch(typeof(Map), "ConstructComponents")]
+    public static class Map_ConstructComponents_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Map __instance)
+        {
+            try
+            {
+                if (__instance.components.OfType<MapComponent_RadiusPreview>().Any())
+                {
+                    return; // Already has the component
+                }
+                
+                var component = new MapComponent_RadiusPreview(__instance);
+                __instance.components.Add(component);
+                Log.Message($"[GUI Developer Mode] MapComponent_RadiusPreview added to map {__instance.Index}");
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[GUI Developer Mode] Failed to add MapComponent_RadiusPreview: {ex}");
             }
         }
     }
