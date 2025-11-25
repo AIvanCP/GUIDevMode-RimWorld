@@ -327,23 +327,35 @@ namespace GUIDevMode
             var scrollRect = new Rect(rect.x, rect.y + currentY, rect.width, rect.height - currentY);
             var incidents = DefDatabase<IncidentDef>.AllDefs
                 .Where(inc => {
-                    // Apply raid filter
-                    if (showRaidIncidentsOnly && inc.category != IncidentCategoryDefOf.ThreatBig)
-                        return false;
-                    
-                    // Apply search filter
-                    if (!string.IsNullOrEmpty(incidentsSearchText))
+                    try
                     {
-                        var searchTerm = incidentsSearchText.ToLower();
-                        return (inc.label?.ToLower().Contains(searchTerm) ?? false) ||
-                               inc.defName.ToLower().Contains(searchTerm) ||
-                               (inc.category?.label?.ToLower().Contains(searchTerm) ?? false);
+                        // Skip incidents with null worker (incompatible mods)
+                        if (inc == null || inc.Worker == null || inc.category == null)
+                            return false;
+                        
+                        // Apply raid filter
+                        if (showRaidIncidentsOnly && inc.category != IncidentCategoryDefOf.ThreatBig)
+                            return false;
+                        
+                        // Apply search filter
+                        if (!string.IsNullOrEmpty(incidentsSearchText))
+                        {
+                            var searchTerm = incidentsSearchText.ToLower();
+                            return (inc.label?.ToLower().Contains(searchTerm) ?? false) ||
+                                   (inc.defName?.ToLower().Contains(searchTerm) ?? false) ||
+                                   (inc.category?.label?.ToLower().Contains(searchTerm) ?? false);
+                        }
+                        
+                        return true;
                     }
-                    
-                    return true;
+                    catch (System.Exception ex)
+                    {
+                        Log.Warning($"[GUI Dev Mode] Error filtering incident {inc?.defName ?? "unknown"}: {ex.Message}");
+                        return false; // Skip problematic incidents
+                    }
                 })
-                .OrderBy(inc => inc.category.label)
-                .ThenBy(inc => inc.label);
+                .OrderBy(inc => inc.category?.label ?? "Unknown")
+                .ThenBy(inc => inc.label ?? inc.defName ?? "Unknown");
                 
             // Calculate height for expanded incident entries (more space for descriptions)
             var contentHeight = incidents.Count() * 55f; // Increased height per entry
@@ -467,99 +479,150 @@ namespace GUIDevMode
         
         private void DrawIncidentEntry(Rect rect, IncidentDef incident)
         {
-            Widgets.DrawMenuSection(rect);
-            var innerRect = rect.ContractedBy(3);
+            if (incident == null) return;
             
-            // Title and category row
-            var titleRect = new Rect(innerRect.x, innerRect.y, innerRect.width * 0.7f, 20f);
-            var buttonRect = new Rect(innerRect.x + innerRect.width * 0.75f, innerRect.y, innerRect.width * 0.25f, 20f);
-            
-            // Color code by incident category
-            GUI.color = GetIncidentCategoryColor(incident.category);
-            Widgets.Label(titleRect, $"{incident.label} ({incident.category.label})");
-            GUI.color = Color.white;
-            
-            // Trigger button
-            if (Widgets.ButtonText(buttonRect, "Trigger"))
+            try
             {
-                TriggerIncident(incident);
+                Widgets.DrawMenuSection(rect);
+                var innerRect = rect.ContractedBy(3);
+                
+                // Title and category row
+                var titleRect = new Rect(innerRect.x, innerRect.y, innerRect.width * 0.7f, 20f);
+                var buttonRect = new Rect(innerRect.x + innerRect.width * 0.75f, innerRect.y, innerRect.width * 0.25f, 20f);
+                
+                // Color code by incident category
+                if (incident.category != null)
+                {
+                    GUI.color = GetIncidentCategoryColor(incident.category);
+                }
+                
+                var displayLabel = incident.label ?? incident.defName ?? "Unknown";
+                var categoryLabel = incident.category?.label ?? "Unknown";
+                Widgets.Label(titleRect, $"{displayLabel} ({categoryLabel})");
+                GUI.color = Color.white;
+                
+                // Trigger button - disable if worker is null
+                var canTrigger = incident.Worker != null && incident.category != null;
+                if (!canTrigger)
+                {
+                    GUI.color = Color.gray;
+                }
+                
+                if (Widgets.ButtonText(buttonRect, canTrigger ? "Trigger" : "Invalid"))
+                {
+                    if (canTrigger)
+                    {
+                        TriggerIncident(incident);
+                    }
+                    else
+                    {
+                        Messages.Message($"{displayLabel} cannot be triggered - incompatible or missing data", MessageTypeDefOf.RejectInput);
+                    }
+                }
+                
+                GUI.color = Color.white;
+                
+                // Description row
+                var descRect = new Rect(innerRect.x, innerRect.y + 22f, innerRect.width, 22f);
+                GUI.color = Color.gray;
+                var description = GetIncidentDescription(incident);
+                Widgets.Label(descRect, description);
+                GUI.color = Color.white;
             }
-            
-            // Description row
-            var descRect = new Rect(innerRect.x, innerRect.y + 22f, innerRect.width, 22f);
-            GUI.color = Color.gray;
-            var description = GetIncidentDescription(incident);
-            Widgets.Label(descRect, description);
-            GUI.color = Color.white;
+            catch (System.Exception ex)
+            {
+                Log.Warning($"[GUI Dev Mode] Error drawing incident entry for {incident?.defName ?? "unknown"}: {ex.Message}");
+            }
         }
         
         private Color GetIncidentCategoryColor(IncidentCategoryDef category)
         {
-            if (category == IncidentCategoryDefOf.ThreatBig || category == IncidentCategoryDefOf.ThreatSmall)
-                return Color.red;
-            if (category.defName == "FactionArrival")
-                return Color.yellow;
-            if (category == IncidentCategoryDefOf.Misc)
-                return Color.cyan;
-            if (category.defName.Contains("Disease"))
-                return new Color(1f, 0.5f, 0f); // Orange
+            if (category == null)
+                return Color.white;
+            
+            try
+            {
+                if (category == IncidentCategoryDefOf.ThreatBig || category == IncidentCategoryDefOf.ThreatSmall)
+                    return Color.red;
+                if (category.defName == "FactionArrival")
+                    return Color.yellow;
+                if (category == IncidentCategoryDefOf.Misc)
+                    return Color.cyan;
+                if (category.defName != null && category.defName.Contains("Disease"))
+                    return new Color(1f, 0.5f, 0f); // Orange
+            }
+            catch (System.Exception ex)
+            {
+                Log.Warning($"[GUI Dev Mode] Error getting incident category color: {ex.Message}");
+            }
             
             return Color.white;
         }
         
         private string GetIncidentDescription(IncidentDef incident)
         {
-            // Try to get description from various sources
-            if (!string.IsNullOrEmpty(incident.description))
-                return incident.description;
+            if (incident == null)
+                return "Unknown incident";
             
-            // Generate description based on incident type and name
-            var defName = incident.defName.ToLowerInvariant();
-            var label = incident.label.ToLowerInvariant();
-            
-            // Threat descriptions
-            if (incident.category == IncidentCategoryDefOf.ThreatBig)
+            try
             {
-                if (defName.Contains("raid")) return "Large hostile force attacks your colony";
-                if (defName.Contains("siege")) return "Enemies set up siege equipment and attack";
-                if (defName.Contains("drop")) return "Hostile forces arrive via drop pods";
-                if (defName.Contains("mech")) return "Mechanoid cluster threatens the area";
-                if (defName.Contains("infestation")) return "Insect infestation spawns underground";
-                return "Major threat to colony";
+                // Try to get description from various sources
+                if (!string.IsNullOrEmpty(incident.description))
+                    return incident.description;
+                
+                // Generate description based on incident type and name
+                var defName = (incident.defName ?? "").ToLowerInvariant();
+                var label = (incident.label ?? "").ToLowerInvariant();
+                
+                // Threat descriptions
+                if (incident.category == IncidentCategoryDefOf.ThreatBig)
+                {
+                    if (defName.Contains("raid")) return "Large hostile force attacks your colony";
+                    if (defName.Contains("siege")) return "Enemies set up siege equipment and attack";
+                    if (defName.Contains("drop")) return "Hostile forces arrive via drop pods";
+                    if (defName.Contains("mech")) return "Mechanoid cluster threatens the area";
+                    if (defName.Contains("infestation")) return "Insect infestation spawns underground";
+                    return "Major threat to colony";
+                }
+                
+                if (incident.category == IncidentCategoryDefOf.ThreatSmall)
+                {
+                    if (defName.Contains("manhunter")) return "Animals turn hostile and hunt colonists";
+                    if (defName.Contains("raid")) return "Small hostile force attacks";
+                    if (defName.Contains("predator")) return "Dangerous predators appear on the map";
+                    return "Minor threat to colony";
+                }
+                
+                // Positive events
+                if (defName.Contains("refugee")) return "Refugee arrives asking for help";
+                if (defName.Contains("trader")) return "Trading opportunity arrives";
+                if (defName.Contains("gift")) return "Friendly faction sends gifts";
+                if (defName.Contains("join")) return "Wanderer wants to join colony";
+                
+                // Environmental events
+                if (defName.Contains("fire")) return "Fire breaks out on the map";
+                if (defName.Contains("weather")) return "Weather pattern changes";
+                if (defName.Contains("eclipse")) return "Solar eclipse blocks solar power";
+                if (defName.Contains("fallout")) return "Toxic fallout affects the region";
+                if (defName.Contains("cold")) return "Cold snap lowers temperatures";
+                if (defName.Contains("heat")) return "Heat wave raises temperatures";
+                
+                // Diseases
+                if (incident.category?.defName?.Contains("Disease") == true)
+                    return "Disease affects the colony";
+                
+                // Faction events
+                if (incident.category?.defName == "FactionArrival")
+                    return "New faction arrives in the area";
+                
+                // Default description
+                return $"Event: {incident.label ?? incident.defName ?? "Unknown"}";
             }
-            
-            if (incident.category == IncidentCategoryDefOf.ThreatSmall)
+            catch (System.Exception ex)
             {
-                if (defName.Contains("manhunter")) return "Animals turn hostile and hunt colonists";
-                if (defName.Contains("raid")) return "Small hostile force attacks";
-                if (defName.Contains("predator")) return "Dangerous predators appear on the map";
-                return "Minor threat to colony";
+                Log.Warning($"[GUI Dev Mode] Error getting incident description: {ex.Message}");
+                return "Unable to load incident description";
             }
-            
-            // Positive events
-            if (defName.Contains("refugee")) return "Refugee arrives asking for help";
-            if (defName.Contains("trader")) return "Trading opportunity arrives";
-            if (defName.Contains("gift")) return "Friendly faction sends gifts";
-            if (defName.Contains("join")) return "Wanderer wants to join colony";
-            
-            // Environmental events
-            if (defName.Contains("fire")) return "Fire breaks out on the map";
-            if (defName.Contains("weather")) return "Weather pattern changes";
-            if (defName.Contains("eclipse")) return "Solar eclipse blocks solar power";
-            if (defName.Contains("fallout")) return "Toxic fallout affects the region";
-            if (defName.Contains("cold")) return "Cold snap lowers temperatures";
-            if (defName.Contains("heat")) return "Heat wave raises temperatures";
-            
-            // Diseases
-            if (incident.category.defName.Contains("Disease"))
-                return "Disease affects the colony";
-            
-            // Faction events
-            if (incident.category.defName == "FactionArrival")
-                return "New faction arrives in the area";
-            
-            // Default description
-            return $"Event: {incident.label}";
         }
         
         // Action methods
@@ -1067,17 +1130,62 @@ namespace GUIDevMode
         
         private void TriggerIncident(IncidentDef incident)
         {
-            var parms = StorytellerUtility.DefaultParmsNow(incident.category, Find.CurrentMap);
-            var firingIncident = new FiringIncident(incident, null, parms);
-            
-            if (incident.Worker.CanFireNow(parms))
+            try
             {
-                incident.Worker.TryExecute(parms);
-                Messages.Message($"Triggered incident: {incident.label}", MessageTypeDefOf.NeutralEvent);
+                if (incident == null)
+                {
+                    Messages.Message("Invalid incident", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
+                if (Find.CurrentMap == null)
+                {
+                    Messages.Message("No active map to trigger incident", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
+                if (incident.Worker == null)
+                {
+                    Messages.Message($"Incident {incident.label ?? incident.defName} has no worker - possibly from incompatible mod", MessageTypeDefOf.RejectInput);
+                    Log.Warning($"[GUI Dev Mode] Incident {incident.defName} has null Worker");
+                    return;
+                }
+                
+                if (incident.category == null)
+                {
+                    Messages.Message($"Incident {incident.label ?? incident.defName} has invalid category", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                
+                var parms = StorytellerUtility.DefaultParmsNow(incident.category, Find.CurrentMap);
+                parms.forced = true; // Force in dev mode
+                
+                // Additional validation for specific parameters
+                if (parms.target == null)
+                {
+                    parms.target = Find.CurrentMap;
+                }
+                
+                if (incident.Worker.CanFireNow(parms))
+                {
+                    if (incident.Worker.TryExecute(parms))
+                    {
+                        Messages.Message($"Triggered incident: {incident.label ?? incident.defName}", MessageTypeDefOf.NeutralEvent);
+                    }
+                    else
+                    {
+                        Messages.Message($"Failed to trigger {incident.label ?? incident.defName} - execution failed", MessageTypeDefOf.RejectInput);
+                    }
+                }
+                else
+                {
+                    Messages.Message($"Cannot trigger {incident.label ?? incident.defName} right now (conditions not met)", MessageTypeDefOf.RejectInput);
+                }
             }
-            else
+            catch (System.Exception ex)
             {
-                Messages.Message($"Cannot trigger {incident.label} right now", MessageTypeDefOf.RejectInput);
+                Log.Error($"[GUI Dev Mode] Error triggering incident {incident?.defName ?? "unknown"}: {ex.Message}\n{ex.StackTrace}");
+                Messages.Message($"Error triggering incident - check log. This may be from an incompatible mod.", MessageTypeDefOf.RejectInput);
             }
         }
         
